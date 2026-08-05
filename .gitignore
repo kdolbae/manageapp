@@ -1,0 +1,61 @@
+# ===== 비밀정보 / secrets =====
+.env
+.env.*
+!.env.example
+*secret*
+*credential*
+service-account*.json
+*.pem
+*.key
+*.pfx
+*.p12
+**/secrets/**
+
+# ===== 개인정보(PII) / 상담 원본 =====
+# 고객 개인정보, 상담 녹음/원본은 저장소에 올리지 않음
+**/pii/**
+**/개인정보/**
+**/상담원본/**
+**/recordings/**
+**/녹음/**
+*.mp3
+*.m4a
+*.wav
+*.aac
+*.mp4
+*.mov
+customer_data*
+고객*.csv
+고객*.xlsx
+연락처*.csv
+연락처*.xlsx
+
+# ===== 원본 데이터 export (개인정보 포함 가능) =====
+**/data_export/**
+**/exports/**
+*.export.csv
+*.dump.sql
+
+# ===== Claude Code 로컬 설정 =====
+.claude/settings.local.json
+
+# ===== 의존성 / 빌드 (향후 코드) =====
+node_modules/
+.next/
+dist/
+build/
+out/
+coverage/
+.turbo/
+
+# ===== OS / 에디터 =====
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+.vscode/
+.idea/
+
+# ===== 로그 =====
+*.log
+npm-debug.log*
