@@ -1,54 +1,83 @@
 # 집대리 (Jipdarie) — 계약·데이터 자산화 플랫폼
 
-UPIS 계약관리 시스템을 대체하고, 흩어진 계약 데이터를 **재사용 가능한 데이터 자산(Data Asset)**으로
-표준화·통합·관리하는 것을 목표로 하는 서비스입니다.
+UPIS 계약관리 시스템을 대체하는 **통합 관리 프로그램**입니다. 계약 업무를 처리하는 동시에,
+흩어진 계약 데이터를 **재사용 가능한 데이터 자산(Data Asset)**으로 표준화·통합·관리합니다.
 
-## 이 저장소가 담는 것
+## 기능
 
-이번 단계 산출물은 세 층으로 구성됩니다.
+| 영역 | 내용 |
+| --- | --- |
+| **대시보드** | 전체/활성 계약, 30일 내 만료, 연체 정산 지표 · 만료 임박 목록 · 미수 정산 · 최근 활동 |
+| **계약 관리** | 목록(검색·상태 필터), 상세, 생성/수정, **생애주기 상태 전환**, 품목·문서·정산·활동 이력, **변경계약(개정)** |
+| **거래처 관리** | 목록(검색), 상세, 생성/수정, 담당자 관리, 식별번호 마스킹 |
+| **정산 관리** | 청구/수납/지급, 마감·연체 관리, 완료 처리, 연체 일괄 반영, 미수 합계 |
+| **데이터 자산 카탈로그** | 자산 목록, 데이터 사전(필드·PII), 계보(Lineage), 품질 검증(차원별 통과율) |
+| **사용자/권한** | 사용자 등록, 권한(관리자/일반/조회) 관리 |
 
-| 순서 | 산출물 | 위치 |
-| --- | --- | --- |
-| 1 | 기획서 (개요·목표·범위·로드맵) | [`docs/01-기획서.md`](docs/01-기획서.md) |
-| 2 | 데이터 모델 / 스키마 설계 | [`docs/02-데이터모델.md`](docs/02-데이터모델.md), [`prisma/schema.prisma`](prisma/schema.prisma) |
-| 3 | UPIS → 신규 시스템 이관 전략 | [`docs/03-이관전략.md`](docs/03-이관전략.md) |
-| 4 | 실행 가능한 프로젝트 스캐폴딩 | Next.js(App Router) + TypeScript + Prisma |
-
-## 아키텍처 한눈에 보기
+## 아키텍처 — 3계층(메달리온) 데이터 파이프라인
 
 ```
 UPIS (레거시 DB)
       │  ① 추출 (dump / 직접접속 / CSV)
       ▼
-[ Bronze ] 스테이징(stg_*)      ← UPIS 원본을 손실 없이 그대로 적재
+[ Bronze ] 스테이징(stg)        ← UPIS 원본을 손실 없이 그대로 적재
       │  ② 정제·표준화
       ▼
-[ Silver ] 정규화 코어           ← 계약/거래처/품목/정산 등 표준 엔터티
+[ Silver ] 정규화 코어(core)     ← 계약/거래처/품목/정산 등 표준 엔터티 (서비스가 사용)
       │  ③ 자산화
       ▼
-[ Gold ]   데이터 자산 카탈로그   ← 데이터셋 메타·계보(lineage)·품질·버전
+[ Gold ]   데이터 자산 카탈로그(asset)  ← 데이터셋 메타·계보·품질·소유자
 ```
 
-## 로컬 개발
+기술 스택: **Next.js(App Router) + TypeScript + Prisma + PostgreSQL**
 
-> DB 접속 정보 확보 전까지는 스키마/문서 검토 위주로 진행합니다.
+## 로컬 실행
 
 ```bash
+# 1) 의존성
 npm install
-cp .env.example .env      # DATABASE_URL 설정
-npx prisma generate
-npx prisma migrate dev    # DB 준비된 뒤
-npm run dev
+
+# 2) 로컬 Postgres (Docker)
+docker compose up -d
+cp .env.example .env          # 기본값이 로컬 DB에 맞춰져 있음
+
+# 3) 스키마 생성 + 데모 데이터
+npx prisma migrate dev --name init
+npm run db:seed
+
+# 4) 개발 서버
+npm run dev                   # http://localhost:3000
 ```
 
-## 현재 상태 / 다음 할 일
+> Docker가 없으면 `.env`의 `DATABASE_URL`을 원하는 Postgres로 지정하면 됩니다.
 
-- [x] 기획서 초안
-- [x] 데이터 모델(3계층) 설계 및 Prisma 스키마
-- [x] 이관 전략 문서
-- [x] 프로젝트 스캐폴딩
-- [ ] **UPIS 실제 스키마 확보** → 스테이징 테이블 매핑 확정
-- [ ] 이관 스크립트 구현 및 검증(행수·합계 대사)
-- [ ] 자산 카탈로그 UI
+### 주요 스크립트
 
-자세한 배경과 결정 사항은 [`docs/01-기획서.md`](docs/01-기획서.md)를 참고하세요.
+| 명령 | 설명 |
+| --- | --- |
+| `npm run dev` | 개발 서버 |
+| `npm run build` | 프로덕션 빌드 |
+| `npm run db:seed` | 데모 데이터 + 자산 카탈로그 시드 |
+| `npm run ingest` | UPIS → Bronze 적재 (스키마 확보 후 어댑터 구현) |
+
+## 저장소 구성
+
+```
+app/                 화면 (대시보드/계약/거래처/정산/자산/사용자) + 서버 액션
+components/           공용 UI (Badge 등)
+lib/                  prisma 클라이언트 · 포맷/라벨 유틸
+prisma/schema.prisma  3계층 데이터 모델 (stg/core/asset)
+prisma/seed.ts        데모 데이터 + 자산 카탈로그 시드
+scripts/ingest-upis.ts  UPIS → Bronze 적재 스켈레톤
+docs/                 기획서 · 데이터 모델 · 이관 전략
+docker-compose.yml    로컬 Postgres
+```
+
+## 다음 단계 (UPIS 이관)
+
+문서 [`docs/03-이관전략.md`](docs/03-이관전략.md) 참고. 실제 이관은 **UPIS 스키마 확보** 후 진행합니다.
+
+- [ ] UPIS 접근 경로 확정(덤프/직접접속/CSV) 및 스키마 공유
+- [ ] `scripts/ingest-upis.ts`의 `readSource()` 어댑터 구현 → Bronze 적재
+- [ ] Bronze → Silver 표준화(transform) 매핑 확정
+- [ ] 대사(reconciliation) 리포트로 이관 검증

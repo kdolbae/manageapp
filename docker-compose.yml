@@ -1,0 +1,15 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: jipdarie-db
+    environment:
+      POSTGRES_USER: jipdarie
+      POSTGRES_PASSWORD: jipdarie
+      POSTGRES_DB: jipdarie
+    ports:
+      - "5432:5432"
+    volumes:
+      - jipdarie-pgdata:/var/lib/postgresql/data
+
+volumes:
+  jipdarie-pgdata:
