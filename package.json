@@ -12,7 +12,8 @@
     "prisma:migrate": "prisma migrate dev",
     "db:seed": "tsx prisma/seed.ts",
     "ingest": "tsx scripts/ingest-upis.ts",
-    "inspect:excel": "tsx scripts/inspect-excel.ts"
+    "inspect:excel": "tsx scripts/inspect-excel.ts",
+    "crawl:uffice": "tsx scripts/crawl-uffice.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -28,6 +29,7 @@
     "@types/node": "^20.14.0",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
+    "playwright": "^1.56.1",
     "prisma": "^5.22.0",
     "tsx": "^4.16.2",
     "typescript": "^5.5.3"
