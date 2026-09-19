@@ -11,13 +11,15 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "db:seed": "tsx prisma/seed.ts",
-    "ingest": "tsx scripts/ingest-upis.ts"
+    "ingest": "tsx scripts/ingest-upis.ts",
+    "inspect:excel": "tsx scripts/inspect-excel.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.22.0",
+    "exceljs": "^4.4.0",
     "next": "^14.2.15",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
