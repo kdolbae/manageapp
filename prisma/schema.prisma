@@ -2,7 +2,7 @@
 // 3계층(메달리온) 모델: stg(Bronze) → core(Silver) → asset(Gold)
 //
 // - stg   : UPIS 원본을 손실 없이 적재하는 스테이징(스키마 무관, JSONB)
-// - core  : 표준 계약 도메인(정규화). 서비스가 읽고 쓰는 계층
+// - core  : 표준 계약 도메인(정규화). UPIS 전 영역을 담는 종합 설계
 // - asset : 데이터 자산 카탈로그(메타·계보·품질)
 
 generator client {
@@ -23,13 +23,13 @@ datasource db {
 
 /// 이관 배치 단위. 재실행/대사(reconciliation)의 기준.
 model StgBatch {
-  id           String       @id @default(cuid())
-  sourceSystem String       @default("UPIS")
+  id           String      @id @default(cuid())
+  sourceSystem String      @default("UPIS")
   /// 이 배치가 다룬 원본 오브젝트(테이블) 이름
   sourceObject String
-  status       BatchStatus  @default(RUNNING)
-  rowCount     Int          @default(0)
-  startedAt    DateTime     @default(now())
+  status       BatchStatus @default(RUNNING)
+  rowCount     Int         @default(0)
+  startedAt    DateTime    @default(now())
   finishedAt   DateTime?
   note         String?
   records      StgRecord[]
@@ -64,28 +64,73 @@ enum BatchStatus {
 }
 
 // ============================================================
-// Silver — 표준 계약 도메인 (정규화)
-// 모든 코어 레코드는 provenance(출처) 필드를 가져 자산화의 계보 기반이 된다.
+// Silver — 표준 계약 도메인 (종합 설계)
+// 모든 핵심 레코드는 provenance(출처) 필드를 가져 자산화의 계보 기반이 된다.
 // ============================================================
+
+// ---------- 조직 / 사용자 / 권한 ----------
+
+/// 부서(조직). 자기참조로 트리 구성.
+model Department {
+  id        String       @id @default(cuid())
+  code      String?      @unique
+  name      String
+  parentId  String?
+  parent    Department?  @relation("DeptTree", fields: [parentId], references: [id])
+  children  Department[] @relation("DeptTree")
+  users     User[]
+  contracts Contract[]
+
+  @@schema("core")
+}
+
+/// 내부 사용자
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  role         UserRole @default(MEMBER)
+  departmentId String?
+  department   Department? @relation(fields: [departmentId], references: [id])
+  createdAt    DateTime @default(now())
+
+  ownedAssets      DataAsset[]
+  managedContracts Contract[]     @relation("ContractManager")
+  approvalSteps    ApprovalStep[]
+  notifications    Notification[]
+
+  @@schema("core")
+}
+
+// ---------- 거래처 / 당사자 ----------
 
 /// 거래처/계약 당사자 (법인 또는 개인)
 model Party {
-  id           String         @id @default(cuid())
+  id           String   @id @default(cuid())
   type         PartyType
   name         String
   /// 사업자등록번호 / 주민등록번호 등 식별번호(마스킹 대상)
   regNo        String?
+  ceoName      String?
+  businessType String?  // 업태
+  industry     String?  // 종목
   address      String?
-  contacts     PartyContact[]
-  contracts    Contract[]     @relation("Counterparty")
+  phone        String?
+  email        String?
+  status       PartyStatus @default(ACTIVE)
+
+  contacts        PartyContact[]
+  bankAccounts    PartyBankAccount[]
+  contracts       Contract[]         @relation("Counterparty")
+  contractParties ContractParty[]
 
   // provenance
   sourceSystem String?
   sourcePk     String?
   ingestedAt   DateTime?
 
-  createdAt    DateTime       @default(now())
-  updatedAt    DateTime       @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([sourceSystem, sourcePk])
   @@index([name])
@@ -93,60 +138,126 @@ model Party {
 }
 
 model PartyContact {
-  id      String  @id @default(cuid())
-  partyId String
-  party   Party   @relation(fields: [partyId], references: [id], onDelete: Cascade)
-  name    String
-  email   String?
-  phone   String?
-  role    String?
+  id        String  @id @default(cuid())
+  partyId   String
+  party     Party   @relation(fields: [partyId], references: [id], onDelete: Cascade)
+  name      String
+  email     String?
+  phone     String?
+  role      String?
+  isPrimary Boolean @default(false)
 
   @@index([partyId])
   @@schema("core")
 }
 
+/// 거래처 계좌 (정산/지급용)
+model PartyBankAccount {
+  id        String  @id @default(cuid())
+  partyId   String
+  party     Party   @relation(fields: [partyId], references: [id], onDelete: Cascade)
+  bank      String
+  accountNo String
+  holder    String?
+
+  @@index([partyId])
+  @@schema("core")
+}
+
+// ---------- 계약 ----------
+
+/// 계약 유형(공통코드형): 용역/구매/임대/유지보수 등
+model ContractType {
+  id          String     @id @default(cuid())
+  code        String     @unique
+  name        String
+  description String?
+  contracts   Contract[]
+
+  @@schema("core")
+}
+
 /// 계약 (본계약 및 변경/부속계약)
 model Contract {
-  id             String            @id @default(cuid())
+  id     String         @id @default(cuid())
   /// 계약 번호(사람이 읽는 식별자)
-  code           String            @unique
-  title          String
-  status         ContractStatus    @default(DRAFT)
+  code   String         @unique
+  title  String
+  status ContractStatus @default(DRAFT)
+
+  typeId String?
+  type   ContractType? @relation(fields: [typeId], references: [id])
 
   counterpartyId String?
-  counterparty   Party?            @relation("Counterparty", fields: [counterpartyId], references: [id])
+  counterparty   Party?  @relation("Counterparty", fields: [counterpartyId], references: [id])
+
+  departmentId String?
+  department   Department? @relation(fields: [departmentId], references: [id])
+
+  /// 계약 주관 담당자
+  managerId String?
+  manager   User?   @relation("ContractManager", fields: [managerId], references: [id])
 
   /// 변경·부속계약이면 원계약을 가리킨다
-  parentId       String?
-  parent         Contract?         @relation("ContractRevision", fields: [parentId], references: [id])
-  revisions      Contract[]        @relation("ContractRevision")
+  parentId  String?
+  parent    Contract?  @relation("ContractRevision", fields: [parentId], references: [id])
+  revisions Contract[] @relation("ContractRevision")
 
-  startDate      DateTime?
-  endDate        DateTime?
-  autoRenew      Boolean           @default(false)
+  description String?
+
+  contractDate DateTime? // 계약 체결일
+  signedDate   DateTime? // 서명 완료일
+  startDate    DateTime?
+  endDate      DateTime?
+  autoRenew    Boolean   @default(false)
   /// 갱신 통지 기한(일)
   noticePeriodDays Int?
 
-  currency       String            @default("KRW")
-  totalAmount    Decimal?          @db.Decimal(18, 2)
+  currency     String   @default("KRW")
+  supplyAmount Decimal? @db.Decimal(18, 2) // 공급가액
+  taxAmount    Decimal? @db.Decimal(18, 2) // 세액
+  totalAmount  Decimal? @db.Decimal(18, 2) // 총액
+  taxIncluded  Boolean  @default(false)
 
-  items          ContractItem[]
-  documents      ContractDocument[]
-  events         ContractEvent[]
-  settlements    Settlement[]
+  items         ContractItem[]
+  parties       ContractParty[]
+  clauses       ContractClause[]
+  milestones    ContractMilestone[]
+  documents     ContractDocument[]
+  events        ContractEvent[]
+  statusHistory ContractStatusHistory[]
+  approvals     ApprovalRequest[]
+  settlements   Settlement[]
+  taxInvoices   TaxInvoice[]
+  notifications Notification[]
 
   // provenance
-  sourceSystem   String?
-  sourcePk       String?
-  ingestedAt     DateTime?
+  sourceSystem String?
+  sourcePk     String?
+  ingestedAt   DateTime?
 
-  createdAt      DateTime          @default(now())
-  updatedAt      DateTime          @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([sourceSystem, sourcePk])
   @@index([status])
   @@index([counterpartyId])
   @@index([endDate])
+  @@schema("core")
+}
+
+/// 계약 다자 당사자 (갑/을/병 등 역할)
+model ContractParty {
+  id         String   @id @default(cuid())
+  contractId String
+  contract   Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  partyId    String
+  party      Party    @relation(fields: [partyId], references: [id])
+  role       String? // 갑, 을, 연대보증 등
+  signedAt   DateTime?
+
+  @@index([contractId])
+  @@index([partyId])
   @@schema("core")
 }
 
@@ -165,17 +276,61 @@ model ContractItem {
   @@schema("core")
 }
 
-model ContractDocument {
-  id         String       @id @default(cuid())
+/// 계약 조항/조건 (약관, 특약)
+model ContractClause {
+  id         String   @id @default(cuid())
   contractId String
-  contract   Contract     @relation(fields: [contractId], references: [id], onDelete: Cascade)
-  kind       DocumentKind @default(OTHER)
+  contract   Contract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  orderNo    Int      @default(0)
+  title      String
+  body       String
+
+  @@index([contractId])
+  @@schema("core")
+}
+
+/// 계약 이행 마일스톤/일정
+model ContractMilestone {
+  id         String          @id @default(cuid())
+  contractId String
+  contract   Contract        @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  name       String
+  dueDate    DateTime?
+  doneDate   DateTime?
+  status     MilestoneStatus @default(PENDING)
+
+  @@index([contractId])
+  @@schema("core")
+}
+
+model ContractDocument {
+  id         String                    @id @default(cuid())
+  contractId String
+  contract   Contract                  @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  kind       DocumentKind              @default(OTHER)
   fileName   String
   /// 저장소 경로 또는 URL
   url        String?
-  uploadedAt DateTime     @default(now())
+  version    Int                       @default(1)
+  uploadedAt DateTime                  @default(now())
+  versions   ContractDocumentVersion[]
 
   @@index([contractId])
+  @@schema("core")
+}
+
+/// 문서 버전 이력
+model ContractDocumentVersion {
+  id           String           @id @default(cuid())
+  documentId   String
+  document     ContractDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  version      Int
+  fileName     String
+  url          String?
+  uploadedById String?
+  uploadedAt   DateTime         @default(now())
+
+  @@unique([documentId, version])
   @@schema("core")
 }
 
@@ -191,6 +346,56 @@ model ContractEvent {
   @@index([contractId, occurredAt])
   @@schema("core")
 }
+
+/// 상태 변경 이력 (감사용)
+model ContractStatusHistory {
+  id           String         @id @default(cuid())
+  contractId   String
+  contract     Contract       @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  fromStatus   ContractStatus?
+  toStatus     ContractStatus
+  changedById  String?
+  changedAt    DateTime       @default(now())
+  memo         String?
+
+  @@index([contractId])
+  @@schema("core")
+}
+
+// ---------- 결재 / 전자서명 ----------
+
+/// 결재 요청 (계약 상신)
+model ApprovalRequest {
+  id            String         @id @default(cuid())
+  contractId    String
+  contract      Contract       @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  title         String
+  status        ApprovalStatus @default(PENDING)
+  requestedById String?
+  requestedAt   DateTime       @default(now())
+  steps         ApprovalStep[]
+
+  @@index([contractId])
+  @@schema("core")
+}
+
+/// 결재선 단계
+model ApprovalStep {
+  id         String             @id @default(cuid())
+  requestId  String
+  request    ApprovalRequest    @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  stepNo     Int
+  approverId String?
+  approver   User?              @relation(fields: [approverId], references: [id])
+  status     ApprovalStepStatus @default(WAITING)
+  actedAt    DateTime?
+  comment    String?
+
+  @@unique([requestId, stepNo])
+  @@schema("core")
+}
+
+// ---------- 재무 / 정산 ----------
 
 /// 대금/정산 (청구·수납·지급)
 model Settlement {
@@ -209,21 +414,97 @@ model Settlement {
   @@schema("core")
 }
 
-/// 내부 사용자
-model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  name      String
-  role      UserRole @default(MEMBER)
-  createdAt DateTime @default(now())
-  ownedAssets DataAsset[]
+/// 세금계산서
+model TaxInvoice {
+  id            String           @id @default(cuid())
+  contractId    String
+  contract      Contract         @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  issueDate     DateTime?
+  supplyAmount  Decimal          @db.Decimal(18, 2)
+  taxAmount     Decimal          @db.Decimal(18, 2)
+  totalAmount   Decimal          @db.Decimal(18, 2)
+  status        TaxInvoiceStatus @default(DRAFT)
+  /// 국세청 승인번호
+  ntsApprovalNo String?
+
+  @@index([contractId])
+  @@schema("core")
+}
+
+// ---------- 알림 ----------
+
+/// 알림 (갱신/만료/연체/결재)
+model Notification {
+  id         String           @id @default(cuid())
+  type       NotificationType
+  contractId String?
+  contract   Contract?        @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  userId     String?
+  user       User?            @relation(fields: [userId], references: [id])
+  message    String
+  dueDate    DateTime?
+  isRead     Boolean          @default(false)
+  isSent     Boolean          @default(false)
+  createdAt  DateTime         @default(now())
+
+  @@index([userId, isRead])
+  @@index([type])
+  @@schema("core")
+}
+
+// ---------- 공통코드 / 감사 ----------
+
+/// 공통코드 그룹
+model CodeGroup {
+  id    String @id @default(cuid())
+  code  String @unique
+  name  String
+  codes Code[]
 
   @@schema("core")
 }
 
+/// 공통코드 값
+model Code {
+  id        String    @id @default(cuid())
+  groupId   String
+  group     CodeGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  code      String
+  name      String
+  sortOrder Int       @default(0)
+
+  @@unique([groupId, code])
+  @@schema("core")
+}
+
+/// 감사 로그 (누가/무엇을/언제 변경했는가)
+model AuditLog {
+  id       String   @id @default(cuid())
+  actorId  String?
+  action   String   // CREATE / UPDATE / DELETE / STATUS_CHANGE ...
+  entity   String   // Contract / Party ...
+  entityId String?
+  before   Json?
+  after    Json?
+  at       DateTime @default(now())
+
+  @@index([entity, entityId])
+  @@schema("core")
+}
+
+// ---------- enums (core) ----------
+
 enum PartyType {
   COMPANY
   INDIVIDUAL
+
+  @@schema("core")
+}
+
+enum PartyStatus {
+  ACTIVE
+  INACTIVE
+  BLOCKED
 
   @@schema("core")
 }
@@ -251,11 +532,36 @@ enum ContractEventType {
   @@schema("core")
 }
 
+enum MilestoneStatus {
+  PENDING
+  DONE
+  DELAYED
+
+  @@schema("core")
+}
+
 enum DocumentKind {
   CONTRACT    // 계약서
   ATTACHMENT  // 첨부
   AMENDMENT   // 변경계약서
   OTHER
+
+  @@schema("core")
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELED
+
+  @@schema("core")
+}
+
+enum ApprovalStepStatus {
+  WAITING
+  APPROVED
+  REJECTED
 
   @@schema("core")
 }
@@ -278,6 +584,26 @@ enum SettlementStatus {
   @@schema("core")
 }
 
+enum TaxInvoiceStatus {
+  DRAFT
+  ISSUED
+  SENT
+  PAID
+  CANCELED
+
+  @@schema("core")
+}
+
+enum NotificationType {
+  RENEWAL   // 갱신 임박
+  EXPIRY    // 만료 임박
+  OVERDUE   // 정산 연체
+  APPROVAL  // 결재 요청
+  GENERAL
+
+  @@schema("core")
+}
+
 enum UserRole {
   ADMIN
   MEMBER
@@ -293,24 +619,24 @@ enum UserRole {
 
 /// 관리 대상 데이터셋 1건 = 데이터 자산
 model DataAsset {
-  id            String             @id @default(cuid())
+  id             String             @id @default(cuid())
   /// 자산 식별 키 (예: core.contract, asset.contract_value_mart)
-  key           String             @unique
-  name          String
-  description   String?
-  layer         AssetLayer
-  sourceSystem  String?
+  key            String             @unique
+  name           String
+  description    String?
+  layer          AssetLayer
+  sourceSystem   String?
   /// 갱신 주기 (예: DAILY, ON_DEMAND)
   refreshCadence String?
-  ownerId       String?
-  owner         User?              @relation(fields: [ownerId], references: [id])
+  ownerId        String?
+  owner          User?              @relation(fields: [ownerId], references: [id])
 
   fields        DataAssetField[]
   lineage       DataLineage[]
   qualityChecks DataQualityCheck[]
 
-  createdAt     DateTime           @default(now())
-  updatedAt     DateTime           @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@schema("asset")
 }
@@ -348,13 +674,13 @@ model DataLineage {
 
 /// 품질 검증 규칙 및 최근 결과
 model DataQualityCheck {
-  id            String            @id @default(cuid())
+  id            String           @id @default(cuid())
   assetId       String
-  asset         DataAsset         @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  asset         DataAsset        @relation(fields: [assetId], references: [id], onDelete: Cascade)
   name          String
   /// 검증 규칙 표현(SQL 조건 또는 설명)
   rule          String
-  dimension     QualityDimension  @default(VALIDITY)
+  dimension     QualityDimension @default(VALIDITY)
   lastStatus    QualityStatus?
   /// 통과율(0~100)
   passRate      Float?
