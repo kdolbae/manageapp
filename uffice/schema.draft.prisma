@@ -1,0 +1,615 @@
+// ─────────────────────────────────────────────────────────────
+// UPIS 실측 기반 스키마 초안 (2026-09-20)
+//
+// 근거: uffice/21_UPIS_화면구조_전수스캔.md, uffice/22_UPIS_엔터티도출_갭분석.md
+//
+// ⚠️ 이 파일은 초안이다. 브랜치의 prisma/schema.prisma 를 덮어쓰지 말 것.
+//    기존에 없는 model만 골라 추가하고, 기존 model에는 필드만 더할 것.
+//
+// 원칙 (05_신규플랫폼_제안.md §2.4)
+//  - 금액은 전부 LedgerEntry 이벤트로. 잔액은 계산값이며 저장하지 않는다.
+//  - 하드 삭제 없음(deletedAt). 모든 상태 변경은 StatusHistory에 남긴다.
+//  - 주방/욕실은 끝까지 분리한다(WorkTask).
+//  - 입금은 계약이 아니라 시공(WorkOrder) 라인에 귀속된다.
+//  - 멀티테넌트: 모든 테이블에 tenantId + RLS.
+// ─────────────────────────────────────────────────────────────
+
+// ===== 열거형 =====
+
+enum WorkPart { KITCHEN BATHROOM }
+
+/// 현행 sigongstate. 배정알림·미정예정은 파생 상태라 제외했다.
+enum SigongStatus {
+  UNDECIDED      // 미정
+  SCHEDULED      // 예정
+  ASSIGNED       // 배정
+  COMPLETED      // 시공완료
+  POSTPONED      // 시공연기
+  CANCELED       // 취소
+  UNDECIDED_OPT  // 미정-옵션
+}
+
+/// 현행 gubun2
+enum WorkKind { INSTALL AS DEFECT_REPAIR NONE }
+
+/// 현행 type1 (접수형태 11종)
+enum IntakeType {
+  VOICE_CONTRACT  // 음성계약
+  FAIR            // 박람회
+  OPTION          // 옵션
+  PRE_CONTRACT    // 사전계약
+  FREE_INSTALL    // 무상시공
+  ETC             // 기타
+  PARTNER         // 협력업체
+  NO_INSTALL      // 미시공
+  TRIAL           // 체험단
+  PRE_EVENT       // 사전행사
+  FAIR_SETUP      // 박람회설치
+}
+
+enum ApprovalStatus { PENDING APPROVED REJECTED }   // 승인대기/승인/미승인
+
+/// 현행 ChargingGubun + 매출취소
+enum LedgerType {
+  CONTRACT       // 계약금액 발생
+  DISCOUNT       // 할인금액
+  VOUCHER        // 상품권
+  DOWN_PAYMENT   // 계약금
+  INTERIM        // 중도금
+  BALANCE        // 잔금
+  REFUND         // 환불금액
+  SALES_CANCEL   // 매출취소
+}
+
+enum PayMethod { CARD TRANSFER CASH }               // 카드/계좌이체/현금
+
+/// 현행 경비 confirmval 5종
+enum ExpenseStatus { CLAIMED REVIEWED REJECTED PAY_APPROVED PAID }
+
+/// 현행 박람회일정 gubun 6종
+enum FairScheduleType {
+  FAIR           // 박람회일정
+  POST           // 게시글일정
+  OPTION         // 옵션일정
+  PRE_EVENT      // 사전행사
+  AGREEMENT      // 협약식일정
+  SETUP          // 설치일정
+}
+
+enum TimeSlot { ANY MORNING AFTERNOON }             // 무관/오전/오후
+
+enum ReportFormat { RATE_3_3 DAILY_WORKER TAX_INVOICE } // 3.3%/일용직/계산서
+
+enum TransferStatus { REQUESTED APPROVED REJECTED }
+
+// ===== 1. 일자별 시공 캐파 =====
+// 근거: /sub/14/ 일정관리설정, ajax_chk_sigongDailyLimit.asp
+
+model SigongDailyLimit {
+  id         String   @id @default(cuid())
+  tenantId   String
+  branchId   String
+  date       DateTime @db.Date
+  limitCount Int
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([tenantId, branchId, date])
+  @@index([tenantId, date])
+}
+
+// ===== 2. 기사 시공비 정산 =====
+// 근거: 시공 등록 폼 정산 14필드, /sub/30/ 지급명세서
+// 현행은 시공 레코드에 컬럼으로 박혀 있다. 주방/욕실 2행으로 정규화한다.
+
+model TechnicianPayout {
+  id           String   @id @default(cuid())
+  tenantId     String
+  workOrderId  String
+  part         WorkPart
+  technicianId String?
+
+  unitPrice      Decimal? @db.Decimal(14, 2)  // gisa_*_unit_price (상품에서 인입)
+  supplyAmount   Decimal? @db.Decimal(14, 2)  // con_supply(_k)
+  preTaxSupply   Decimal? @db.Decimal(14, 2)  // pre_tax_supply(_k)
+  ratio          Decimal? @db.Decimal(6, 4)   // gisa_bath_ratio(_k) 배분율
+  subtotal       Decimal? @db.Decimal(14, 2)  // sumcost_k / sumcost_b
+  additionalPay  Decimal? @db.Decimal(14, 2)  // add_pay3 / add_pay2 (교통비 등)
+  payoutAmount   Decimal? @db.Decimal(14, 2)  // gisa_kitchen_pay / gisa_bath_pay
+
+  approved   Boolean   @default(false)        // gisak_payyn / gisab_payyn
+  approvedAt DateTime?
+  approvedBy String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([workOrderId, part])
+  @@index([tenantId, technicianId, approved])
+}
+
+// ===== 3. 지점 간 계약 이관 =====
+// 근거: /sub/04/ 이관관리, act=transAgency, 목록의 "대구(이관)" 표기
+
+model AgencyTransfer {
+  id           String         @id @default(cuid())
+  tenantId     String
+  contractId   String
+  fromBranchId String
+  toBranchId   String
+  status       TransferStatus @default(REQUESTED)
+  requestedBy  String
+  requestedAt  DateTime       @default(now())
+  decidedBy    String?
+  decidedAt    DateTime?
+  memo         String?
+
+  @@index([tenantId, contractId])
+  @@index([tenantId, status])
+}
+
+// ===== 4. 코팅제/시공용품 발주 =====
+// 근거: /sub/41/ 발주 관리 (제품 23종)
+
+model MaterialProduct {
+  id        String   @id @default(cuid())
+  tenantId  String
+  legacyId  Int?     // 현행 item value (2~24)
+  name      String
+  category  String?  // 코팅제 | 시공용품
+  spec      String?  // 500ml | 250ml | 1L | 100ml | set(36) | set(4) | ea
+
+  // 가격 2단 — 기사앱 발주 화면 실측
+  priceUnit    Decimal? @db.Decimal(14, 2)  // 병단위
+  pricePrepaid Decimal? @db.Decimal(14, 2)  // 선결제 (더 저렴)
+
+  enabled   Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  orders MaterialOrder[]
+
+  @@index([tenantId, enabled])
+}
+
+model MaterialOrder {
+  id          String  @id @default(cuid())
+  tenantId    String
+  branchId    String?
+  requesterId String
+  productId   String
+  option      String?  // 현행 opt* : "병단위|162000" 형태
+  priceType   String?  // 병단위 | 선결제
+  unitPrice   Decimal @db.Decimal(14, 2)
+  quantity    Int
+  amount      Decimal @db.Decimal(14, 2)
+  contactTel  String?
+
+  approved   Boolean   @default(false)
+  approvedAt DateTime?
+  approvedBy String?
+
+  requestedAt DateTime  @default(now())
+  deletedAt   DateTime?
+
+  product MaterialProduct @relation(fields: [productId], references: [id])
+
+  @@index([tenantId, approved, requestedAt])
+  @@index([tenantId, requesterId])
+}
+
+// ===== 4-1. 기사 예치금 원장 =====
+// 근거: 발주 "선결제"는 할인이 아니라 예치금(선충전) 방식의 어드밴티지 (현업 확인)
+// 금액 원장과 같은 원칙: 이벤트만 쌓고 잔액은 계산값.
+
+enum DepositEntryType {
+  TOPUP       // 선결제 충전
+  CONSUME     // 발주 출고 차감
+  ADJUST      // 관리자 조정
+  REFUND      // 환불
+}
+
+model TechnicianDeposit {
+  id       String @id @default(cuid())
+  tenantId String
+  userId   String // 기사
+
+  type     DepositEntryType
+  amount   Decimal  @db.Decimal(14, 2) // 부호 없이 저장, type으로 가감 판단
+  orderId  String?                      // CONSUME일 때 MaterialOrder 참조
+  memo     String?
+
+  occurredAt DateTime @default(now())
+  createdBy  String?
+  canceledAt DateTime?   // 취소는 삭제가 아니라 표시
+
+  @@index([tenantId, userId, occurredAt])
+  @@index([orderId])
+}
+
+// ===== 5. 견적서 =====
+// 근거: /sub/12/ — 현행은 엑셀 출력만 하고 저장하지 않는다. 신규는 저장 + 계약 전환.
+
+model Quote {
+  id         String  @id @default(cuid())
+  tenantId   String
+  branchId   String?
+  customerId String?
+
+  customerName String
+  tel          String?
+  siteId       String?
+  dong         String?
+  ho           String?
+  unitType     String?   // 평형
+
+  topMaterial String?    // grade2: 인조대리석 | 엔지니어드스톤
+  memo        String?
+
+  totalAmount   Decimal? @db.Decimal(14, 2)  // sta_amt 합계금액
+  offeredAmount Decimal? @db.Decimal(14, 2)  // pre_amt 제공금액
+
+  convertedContractId String?                // 계약 전환 시 연결
+
+  createdBy String
+  createdAt DateTime  @default(now())
+  deletedAt DateTime?
+
+  items QuoteItem[]
+
+  @@index([tenantId, createdAt])
+}
+
+model QuoteItem {
+  id       String  @id @default(cuid())
+  quoteId  String
+  isGift   Boolean @default(false)  // 사은품 여부
+  depth1   String?                  // 대분류
+  depth2   String?                  // 중분류
+  quantity Int?
+  etcText  String?
+  sortNo   Int     @default(0)
+
+  quote Quote @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+
+  @@index([quoteId])
+}
+
+// ===== 6. 인바운드 상담 =====
+// 근거: /_project/board/1017/
+
+enum ConsultCategory { NEW SCHEDULE CANCEL AS PARTNER RETENTION ETC }
+enum InternetInterest { WANT_NEW KEEP_EXISTING NOT_INTERESTED }
+
+model Consultation {
+  id       String  @id @default(cuid())
+  tenantId String
+  branchId String?
+
+  isExistingCustomer Boolean @default(false)  // CusGubun: 기존고객 | 일반
+  customerId         String?
+  customerName       String
+  customerTel        String?
+  contractId         String?
+
+  category         ConsultCategory
+  internetInterest InternetInterest?
+  memo             String?
+
+  managerId String
+  createdAt DateTime  @default(now())
+  deletedAt DateTime?
+
+  attachments Attachment[]
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, customerTel])
+  @@index([tenantId, contractId])
+}
+
+// ===== 7. 캘린더 일자 메모 =====
+// 근거: /sub/36/, /sub/06/ — "휴무 : OOO", "일정마감", "추석" 등
+
+model ScheduleMemo {
+  id        String   @id @default(cuid())
+  tenantId  String
+  branchId  String
+  date      DateTime @db.Date
+  content   String
+  updatedBy String?
+  updatedAt DateTime @updatedAt
+
+  @@unique([tenantId, branchId, date])
+  @@index([tenantId, date])
+}
+
+// ===== 8. 직원/기사 휴가 =====
+// 근거: 사용자 등록 화면의 월별 휴가 달력, ajax_setUserVacation.asp
+
+model UserVacation {
+  id       String   @id @default(cuid())
+  tenantId String
+  userId   String
+  date     DateTime @db.Date
+  memo     String?
+
+  @@unique([userId, date])
+  @@index([tenantId, date])
+}
+
+// ===== 9. 회사정보 + 입금계좌 =====
+// 근거: /sub/21/ 환경설정
+
+model CompanyInfo {
+  id            String  @id @default(cuid())
+  tenantId      String  @unique
+  companyName   String
+  businessRegNo String?
+  ceoName       String?
+  zipCode       String?
+  address1      String?
+  address2      String?
+  tel           String?
+  fax           String?
+  bizType       String?  // 업태
+  bizItem       String?  // 종목
+  homepage      String?
+  email         String?
+
+  updatedAt DateTime @updatedAt
+
+  bankAccounts BankAccount[]
+}
+
+model BankAccount {
+  id            String  @id @default(cuid())
+  tenantId      String
+  companyInfoId String
+  bankName      String
+  accountNo     String   // 암호화 저장 권장
+  holder        String?
+  memo          String?
+  displayOrder  Int      @default(1)
+  enabled       Boolean  @default(true)
+
+  companyInfo CompanyInfo @relation(fields: [companyInfoId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, displayOrder])
+}
+
+// ===== 10. SMS/알림 상용구 =====
+// 근거: /sub/10/ 상용구 관리, ajax_setIdiot.asp
+
+model MessageTemplate {
+  id        String   @id @default(cuid())
+  tenantId  String
+  branchId  String?
+  title     String?
+  content   String
+  sortNo    Int      @default(0)
+  enabled   Boolean  @default(true)
+  updatedAt DateTime @updatedAt
+
+  @@index([tenantId, sortNo])
+}
+
+// ===== 11. 첨부파일 공통 =====
+// 근거: 경비 영수증 15 · 입금 영수증 3 · 박람회 이미지 14 · 기사전달 2
+
+enum AttachmentOwner {
+  EXPENSE          // 경비 영수증
+  LEDGER_ENTRY     // 입금 영수증
+  FAIR_SCHEDULE    // 박람회 이미지
+  FAIR_SALES_MEMO  // 영업자 전달 이미지
+  WORK_ORDER       // 기사 전달 파일
+  COMPLETION_PHOTO // 시공 완료 사진
+  CONSULTATION     // 상담 첨부
+  USER_PHOTO
+}
+
+model Attachment {
+  id        String          @id @default(cuid())
+  tenantId  String
+  ownerType AttachmentOwner
+  ownerId   String
+
+  fileName    String
+  storagePath String
+  mimeType    String?
+  sizeBytes   Int?
+  caption     String?        // 경비 영수증의 설명 텍스트(reciepttxt)
+  approvalNo  String?        // 영업자앱 경비: 영수증 장마다 승인번호를 받는다
+  sortNo      Int            @default(0)
+
+  uploadedBy String?
+  createdAt  DateTime  @default(now())
+  deletedAt  DateTime?
+
+  consultation Consultation? @relation(fields: [consultationId], references: [id])
+  consultationId String?
+
+  @@index([tenantId, ownerType, ownerId])
+}
+
+// ===== 12. 계약 태그 (추가옵션 11종) =====
+// 근거: occ / option1 — '집대리' 태그가 이미 존재한다
+
+model Tag {
+  id       String  @id @default(cuid())
+  tenantId String
+  code     String  // INTERNET_NEW, DAEGU_CONSIGN, SCALING, JIPDAERI, ...
+  name     String  // 인터넷신규, 대구위탁, 스케일링, 집대리, ...
+  enabled  Boolean @default(true)
+  sortNo   Int     @default(0)
+
+  workOrders WorkOrderTag[]
+
+  @@unique([tenantId, code])
+}
+
+model WorkOrderTag {
+  workOrderId String
+  tagId       String
+  createdAt   DateTime @default(now())
+
+  tag Tag @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([workOrderId, tagId])
+  @@index([tagId])
+}
+
+// ─────────────────────────────────────────────────────────────
+// 참고: 기존 스키마에 이미 있을 가능성이 높은 핵심 축.
+// 브랜치의 schema.prisma 와 이름이 겹치면 아래는 쓰지 말고,
+// 주석에 표시된 "추가 필드"만 기존 model 에 더할 것.
+// ─────────────────────────────────────────────────────────────
+
+// model Contract {
+//   ...기존 필드...
+//   // ▼ 추가 권장
+//   approvalStatus     ApprovalStatus @default(PENDING)  // 승인대기/승인/미승인
+//   taxInvoiceIssued   Boolean        @default(false)
+//   taxInvoiceNo       String?
+//   cashReceiptIssued  Boolean        @default(false)
+//   cashReceiptPhone   String?
+//   moveInDate         DateTime?                          // 입주예정일
+//   unitType           String?                            // 평형(type)
+//   customerNameLocked Boolean        @default(true)       // 등록 후 고객명 수정 불가
+// }
+
+// model WorkOrder {   // = 현행 시공(sigong) 라인
+//   ...기존 필드...
+//   // ▼ 추가 권장
+//   intakeType    IntakeType        // 접수형태 11종
+//   workKind      WorkKind          // 시공종류 4종
+//   status        SigongStatus
+//   topMaterial   String?           // grade2: 상품별시공비|주방UV|주방나노
+//   packageProductId String?
+//   extraProductId   String?
+//   itemDetail       String?
+//   itemDetail2      String?
+//   freeService      String?        // 무료시공내역
+//   amountWork    Decimal?  @db.Decimal(14,2)  // amt_etc 시공금액
+//   discount      Decimal?  @db.Decimal(14,2)  // discount1 할인금액
+//   voucher       Decimal?  @db.Decimal(14,2)  // discount2 상품권
+//   finishedDate  DateTime?
+//   cancelReason  String?
+//   canceledDate  DateTime?
+//   memoToTechnician String?
+//   memoConsult      String?
+//   memoEtc          String?
+// }
+
+// model WorkTask {    // 주방/욕실 각 1건 — 05번 설계의 Task
+//   part            WorkPart
+//   scheduledDate   DateTime?
+//   timeSlot        TimeSlot  @default(ANY)  // 관리자 지정: 무관/오전/오후
+//   startTime       String?   // 기사가 앱에서 지정: "08:00"~"17:30", 30분 단위(12:00 없음)
+//   technicianId    String?
+//   technicianMemo  String?   // 기사앱 "나의 메모" (500자)
+// }
+
+// model CompletionReport {
+//   ...기존 필드...
+//   // ▼ 추가 권장 — 전부 기사앱에서 들어온다
+//   completionStatus   String?    // 시공완료|일부미시공|시공취소|시공연기
+//   completionMemo     String?
+//   reviewUrl          String?    // 블로그·카페 후기 링크. 기사가 수집
+//   customerNotifiedAt DateTime?  // 시공완료 알림톡 발송 시각
+//   notifiedBy         String?    // 발송 주체(기사)
+// }
+
+// model Customer {
+//   ...기존 필드...
+//   // ▼ 기업 계약자 — 태블릿 계약접수에만 존재하는 항목
+//   kind            String?  // 개인 | 기업
+//   repName         String?  // 대표자
+//   businessRegNo   String?  // 사업자번호 (중복체크 대상)
+//   bizType         String?  // 업태
+//   bizItem         String?  // 종목
+//   taxInvoiceEmail String?  // 전자세금계산서메일
+//   zipCode         String?
+//   address1        String?
+//   address2        String?
+// }
+
+// 태블릿 ctGubun — PC 어디에도 없는 사업 라인 코드
+// model BusinessLine {
+//   id       String  @id @default(cuid())
+//   tenantId String
+//   code     String  // UPIS | HOMECARE
+//   name     String  // 유피스 | 홈케어
+//   enabled  Boolean @default(true)
+//   @@unique([tenantId, code])
+// }
+
+// model LedgerEntry {
+//   ...기존 필드...
+//   // ▼ 추가 권장 — 입금은 계약이 아니라 시공 라인에 귀속된다
+//   workOrderId  String?   // 현행 SigongIdx. 사실상 필수로 취급할 것
+//   type         LedgerType
+//   method       PayMethod?
+//   payerName    String?   // 입금자명
+//   approvalNo   String?   // 승인번호
+//   cardOrBank   String?   // 카드명/은행명
+//   cardNoMasked String?   // 말4자리만. 전체 번호 저장 금지
+// }
+
+// model Expense {
+//   ...기존 필드...
+//   // ▼ 추가 권장
+//   status         ExpenseStatus @default(CLAIMED)
+//   statusMemo     String?
+//   rejectReason   String?
+//   corporateCardId String?      // 법인카드 슬롯
+//   fairScheduleId String?
+//   salesRepId     String?
+//   supplyAmount   Decimal? @db.Decimal(14,2)  // 공급가
+//   vatAmount      Decimal? @db.Decimal(14,2)  // 부가세
+//   dailyWage      Decimal? @db.Decimal(14,2)  // 일당(ildang)
+//   workDays       Decimal? @db.Decimal(6,2)
+//   mileage        Decimal? @db.Decimal(10,2)
+// }
+
+// model FairSchedule {
+//   ...기존 필드...
+//   // ▼ 추가 권장
+//   type         FairScheduleType
+//   round        Int?      // 차수 1~3
+//   households   Int?      // 세대수
+//   hits         Int?      // 조회수
+//   venue        String?   // 행사장소
+//   cafeUrl      String?
+//   cafePostDates String?  // "9/1,9/3,9/5"
+//   bandUrl      String?
+//   installSchedule String?
+//   cargoInfo    String?
+//   gift         String?   // 경품
+//   memoToSales  String?   // 영업자전달정보
+// }
+
+// model FairStaff {   // 현행 sales1~7 슬롯
+//   fairScheduleId String
+//   salesRepId     String
+//   onDuty         Boolean @default(true)
+//   dutyDays       Decimal? @db.Decimal(6,2)
+// }
+
+// model FairCost {
+//   fairScheduleId   String
+//   costType         String?   // 종류
+//   amount           Decimal   @db.Decimal(14,2)
+//   paidDate         DateTime?
+//   withdrawAccount  String?
+//   taxInvoiceIssued Boolean   @default(false)
+// }
+
+// model User {
+//   ...기존 필드...
+//   // ▼ 추가 권장 (주민번호는 가능하면 미보관)
+//   departmentCode String?
+//   positionCode   String?
+//   laborCost      Decimal?     @db.Decimal(14,2)
+//   reportFormat   ReportFormat?
+//   isSalesRep     Boolean      @default(false)
+//   businessRegNo  String?
+// }
