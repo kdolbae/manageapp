@@ -63,21 +63,35 @@ npm run dev                   # http://localhost:3000
 ## 저장소 구성
 
 ```
-app/                 화면 (대시보드/계약/거래처/정산/자산/사용자) + 서버 액션
-components/           공용 UI (Badge 등)
-lib/                  prisma 클라이언트 · 포맷/라벨 유틸
-prisma/schema.prisma  3계층 데이터 모델 (stg/core/asset)
-prisma/seed.ts        데모 데이터 + 자산 카탈로그 시드
+app/                    화면 (대시보드/계약/거래처/정산/자산/사용자) + 서버 액션
+components/             공용 UI (Badge 등)
+lib/                    prisma 클라이언트 · 포맷/라벨 유틸
+prisma/schema.prisma    3계층 데이터 모델 (stg/core/asset)
+prisma/seed.ts          데모 데이터 + 자산 카탈로그 시드
 scripts/ingest-upis.ts  UPIS → Bronze 적재 스켈레톤
-docs/                 기획서 · 데이터 모델 · 이관 전략
-docker-compose.yml    로컬 Postgres
+scripts/inspect-excel.ts  엑셀 → 테이블 구조(DDL) 생성
+scripts/crawl-uffice.ts   UPIS 화면 구조 수집 (읽기 전용)
+docs/                   기획·설계·이관·진행기록 문서
+docker-compose.yml      로컬 Postgres
 ```
+
+## 문서
+
+| 문서 | 내용 |
+| --- | --- |
+| [`docs/00-진행기록.md`](docs/00-진행기록.md) | **의사결정 로그** — 무엇을 왜 결정했는지, 미해결 과제 |
+| [`docs/01-기획서.md`](docs/01-기획서.md) | 배경·목표·범위·아키텍처·로드맵 |
+| [`docs/02-데이터모델.md`](docs/02-데이터모델.md) | 3계층 모델, 모듈 구성, ERD |
+| [`docs/03-이관전략.md`](docs/03-이관전략.md) | 추출→적재→표준화→자산화, 대사 기준 |
+| [`docs/04-엑셀구조분석.md`](docs/04-엑셀구조분석.md) | 엑셀 → 테이블 구조 생성 도구 |
+| [`docs/05-로컬-크롤링-프롬프트.md`](docs/05-로컬-크롤링-프롬프트.md) | 로컬 PC에서 UPIS 구조 취합하는 프롬프트 |
 
 ## 다음 단계 (UPIS 이관)
 
-문서 [`docs/03-이관전략.md`](docs/03-이관전략.md) 참고. 실제 이관은 **UPIS 스키마 확보** 후 진행합니다.
+실제 이관은 **UPIS 구조 확보** 후 진행합니다. 상세는 [`docs/03-이관전략.md`](docs/03-이관전략.md) 참고.
 
-- [ ] UPIS 접근 경로 확정(덤프/직접접속/CSV) 및 스키마 공유
+- [ ] UPIS 구조 확보 — 로컬 크롤링([`docs/05`](docs/05-로컬-크롤링-프롬프트.md)) 또는 엑셀 전달([`docs/04`](docs/04-엑셀구조분석.md))
+- [ ] 확보된 구조와 현재 스키마 **갭 분석** → 부족한 테이블·필드 추가
 - [ ] `scripts/ingest-upis.ts`의 `readSource()` 어댑터 구현 → Bronze 적재
 - [ ] Bronze → Silver 표준화(transform) 매핑 확정
 - [ ] 대사(reconciliation) 리포트로 이관 검증
