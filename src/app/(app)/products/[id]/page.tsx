@@ -118,7 +118,7 @@ export default async function ProductPage({ params }: PageProps<"/products/[id]"
   const { data: found } = await supabase
     .from("product")
     .select(
-      "id, code, name, kind, category_id, work_area_code, unit, price, technician_rate, duration_min, description, status, category:product_category(id, name)",
+      "id, code, name, kind, category_id, work_area_code, unit, price, technician_rate, duration_min, description, status, app_service_id, category:product_category(id, name)",
     )
     .eq("id", id)
     .eq("tenant_id", tid)

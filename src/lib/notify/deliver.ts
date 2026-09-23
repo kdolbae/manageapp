@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { sendTeamsCard } from "./teams";
 import { phone } from "@/lib/format";
 
-const CHANNEL_LABEL: Record<string, string> = { web: "홈페이지", phone: "전화", kakao: "카카오", partner: "협력업체", walk_in: "방문", fair: "박람회", other: "기타" };
+const CHANNEL_LABEL: Record<string, string> = { web: "홈페이지", phone: "전화", kakao: "카카오", partner: "협력업체", walk_in: "방문", fair: "박람회", app: "집대리 앱", other: "기타" };
 
 type Outbox = { id: string; tenant_id: string; channel: string; template: string; payload: Record<string, unknown>; attempts: number };
 

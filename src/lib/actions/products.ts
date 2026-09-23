@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { requireTenant } from "@/lib/auth/session";
 import type { ActionState } from "@/lib/actions/auth";
+import { APP_SERVICE_IDS } from "@/lib/app-link";
 
 // ---------------------------------------------------------------- 공통 스키마
 const MAX_AMOUNT = 99_999_999_999_999; // numeric(14,0)
@@ -186,6 +187,10 @@ const productInput = z.object({
   technician_rate: amount,
   duration_min: intOpt,
   description: optionalText(2000),
+  app_service_id: z
+    .union([z.enum(APP_SERVICE_IDS), z.literal("")])
+    .optional()
+    .transform((v) => v || null),
 });
 const PRODUCT_INVALID = "상품 코드(영문·숫자 1~30자), 상품명, 금액(숫자)을 확인해 주세요.";
 const PRODUCT_DUPLICATE = "같은 코드의 상품이 이미 있습니다(보관된 것 포함).";

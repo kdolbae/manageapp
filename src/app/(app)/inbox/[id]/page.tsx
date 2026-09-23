@@ -1,3 +1,4 @@
+import { Fragment } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireTenant } from "@/lib/auth/session";
@@ -8,6 +9,7 @@ import { CopyButton } from "@/components/copy-button";
 import { updateInquiry, addConsultation, convertInquiry } from "@/lib/actions/inbox";
 import { INQUIRY_STATUS, INQUIRY_CHANNEL, CONSULT_CHANNEL, fmtDateTime } from "@/lib/inbox";
 import { branchOptions, memberOptions, ensureOption } from "@/app/(app)/people/data";
+import { appServiceLabel } from "@/lib/app-link";
 
 export const metadata = { title: "문의" };
 
@@ -59,6 +61,7 @@ export default async function InquiryPage({ params }: PageProps<"/inbox/[id]">) 
   const st = INQUIRY_STATUS[inq.status] ?? { label: inq.status, badge: "wait" as const };
   const canWrite = session.can("inquiry.write");
   const utm = Object.entries(inq.utm ?? {}).filter(([, v]) => v);
+  const appHome = inq.channel === "app" ? appHomeFacts(inq.extra) : [];
   const me = session.profile?.display_name || session.user.email || "";
   const brand = (session.current.tenant.brand ?? {}) as Record<string, string | null>;
   const draft = `[${brand.app_name || session.current.tenant.name}] ${inq.name ?? "고객"}님, ${inq.kind ? `${inq.kind} ` : ""}문의 주셔서 감사합니다. 담당 ${me}입니다. 확인 후 곧 연락드리겠습니다. 급하시면 이 번호로 답장 주세요.`;
@@ -95,8 +98,16 @@ export default async function InquiryPage({ params }: PageProps<"/inbox/[id]">) 
               <dt className="text-muted">지점</dt><dd>{inq.branch?.name ?? "본사 공통"}</dd>
               {inq.source_page && <><dt className="text-muted">들어온 페이지</dt><dd className="mono text-xs break-all">{inq.source_page}</dd></>}
               {inq.first_response_at && <><dt className="text-muted">첫 응답</dt><dd>{fmtDateTime(inq.first_response_at)}</dd></>}
-              {inq.external_id && <><dt className="text-muted">홈페이지 번호</dt><dd className="mono text-xs">{inq.external_id}</dd></>}
+              {inq.external_id && <><dt className="text-muted">{inq.channel === "app" ? "앱 요청 번호" : "홈페이지 번호"}</dt><dd className="mono text-xs">{inq.external_id}</dd></>}
             </dl>
+            {appHome.length > 0 && (
+              <div className="mt-4">
+                <h3 className="text-xs font-semibold text-muted mb-1.5">앱에서 보낸 우리집 정보</h3>
+                <dl className="grid grid-cols-[100px_1fr] gap-y-1.5 gap-x-3 text-sm">
+                  {appHome.map(([k, v]) => <Fragment key={k}><dt className="text-muted">{k}</dt><dd>{v}</dd></Fragment>)}
+                </dl>
+              </div>
+            )}
             {utm.length > 0 && (
               <div className="mt-4">
                 <h3 className="text-xs font-semibold text-muted mb-1.5">유입 경로 (마케팅)</h3>
@@ -223,4 +234,22 @@ export default async function InquiryPage({ params }: PageProps<"/inbox/[id]">) 
       </div>
     </div>
   );
+}
+
+/** 집대리 앱 컨설팅 요청의 extra({ home, plan, via }) 를 사람이 읽는 항목으로. 사진·하자 내용은 앱이 보내지 않는다 */
+function appHomeFacts(extra: Record<string, unknown>): [string, string][] {
+  const home = (extra?.home ?? {}) as Record<string, unknown>;
+  const plan = (extra?.plan ?? {}) as Record<string, unknown>;
+  const out: [string, string][] = [];
+  const add = (k: string, v: unknown) => { if (v !== undefined && v !== null && v !== "") out.push([k, String(v)]); };
+  add("요청 방법", extra?.via === "kakao" ? "카카오톡" : extra?.via === "phone" ? "전화" : extra?.via);
+  add("단지", home.name);
+  add("지역", home.region);
+  add("평형", typeof home.pyeong === "number" ? `${home.pyeong}평` : home.pyeong);
+  add("욕실", typeof home.bathrooms === "number" ? `${home.bathrooms}개` : home.bathrooms);
+  add("입주일", home.moveInDate);
+  add("사전점검일", home.inspectionDate);
+  if (Array.isArray(plan.serviceIds) && plan.serviceIds.length > 0) add("고른 시공", plan.serviceIds.map((id) => appServiceLabel(String(id))).join(", "));
+  if (typeof plan.defectCount === "number" && plan.defectCount > 0) add("기록한 하자", `${plan.defectCount}건`);
+  return out;
 }

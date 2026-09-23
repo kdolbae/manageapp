@@ -26,14 +26,17 @@ npm run lint && npx tsc --noEmit && npm run build
   - `20261003001100_groupware` 공지·결재(다단계)·휴가·연차 잔여 뷰
   - `20261004001200_customer_page` 계약 비밀 링크(public_token)와 고객 페이지 함수 `customer_page()`·`customer_submit_review()`·`customer_inquiry()`
   - `20261005001300_campaign` 캠페인(UTM 정규화). 유입 링크는 `/sales/campaigns` 에서 만든다
+  - `20261006001400_app_link` 집대리 앱 연동: 문의 채널 `app`, 상품의 앱 공종(`product.app_service_id`), 계약 금액 집계 `app_price_stats()`
   - `20261007001500_platform` 집대리 플랫폼 층: 운영사 지정(`claim_platform_operator()`), 협력업체 신청·승인(`approve_vendor()` → 사업체·대표 초대), 업체 소개·노출(`vendor_profile`, `vendor_card` 뷰), 고객 요청·견적·대화(`service_request`·`quote`·`request_message`, 업체용 뷰 `market_request` 는 이름 가림·연락처 비노출), 수수료·정산(`platform_fee`, `build_platform_settlement()`), 상단 노출 광고(`vendor_promotion`)
 - `supabase/tests/local_stub.sql` — Supabase 없이 로컬 Postgres 에서 검증할 때만 쓰는 스텁(auth 스키마·역할). 실제 프로젝트에 적용 금지.
-- `supabase/tests/rls_*.sql` — 사업체 간 격리·권한 상승 차단·범위(own/branch) 테스트. 마이그레이션 순서대로 적용한 뒤 실행한다.
+- `supabase/tests/rls_*.sql` — 사업체 간 격리·권한 상승 차단·범위(own/branch) 테스트. 앞 테스트가 만든 자료를 뒤 테스트가 쓰므로 마이그레이션과 같은 순서로 실행한다: foundation → parties_products → contracts → ledger → assignment → media → inquiry → finance → inventory → groupware → customer_page → campaign → app_link → platform.
 
 로컬 검증 예시(Postgres 16, 데이터베이스 새로 만들어서):
 
 ```bash
-for f in supabase/tests/local_stub.sql supabase/migrations/*.sql supabase/tests/rls_*.sql; do
+T=supabase/tests
+for f in $T/local_stub.sql supabase/migrations/*.sql \
+  $T/rls_{foundation,parties_products,contracts,ledger,assignment,media,inquiry,finance,inventory,groupware,customer_page,campaign,app_link,platform}.sql; do
   psql "$DB" -v ON_ERROR_STOP=1 -q -f "$f"
 done
 ```
@@ -44,6 +47,7 @@ done
 - Teams: 워크플로 웹훅 주소를 `/settings/integrations` 에 저장하면 새 문의마다 카드가 간다. 발송은 문의 인입 직후와 시간마다(`/api/internal/deliver`, Vercel cron, `CRON_SECRET`).
 - 앱 내 알림: 헤더의 종. Supabase Realtime 으로 새 알림이 바로 뜬다.
 - 고객 페이지: `/c/<사업체 slug>` 브랜드 페이지(승인된 후기·마케팅 사용 사진·문의 폼), `/c/<slug>/<계약 토큰>` 고객용 계약 페이지(일정·기사·사진·잔액·후기). 서비스 키로만 DB 를 읽으므로 `SUPABASE_SECRET_KEY` 가 있어야 열린다.
+- 집대리 앱(kdolbae/jipdarie) 연동: 아래 "집대리 앱 연동" 참고.
 - PWA: `public/manifest.webmanifest` + `public/sw.js`. 배포마다 `sw.js` 의 VERSION 을 올린다. 시공 시작/완료는 오프라인이면 큐에 쌓였다가 연결되면 전송된다.
 
 ## 집대리 마켓(플랫폼 층)
@@ -52,6 +56,21 @@ done
 - 업체 화면(`/market`, 권한 market.read/write/settle): 요청 목록·견적 제출·대화·업체 소개 편집·정산서·상단 노출 신청. 업체에는 고객 이름 일부와 단지까지만 보이고, 전화번호는 고객이 그 업체를 선택하고 공개를 켠 뒤에만 보인다.
 - 운영자 화면(`/platform`, 운영사 사업체로 접속한 platform.manage 권한자): 신청 심사·승인(사업체 자동 생성 + 대표 초대 링크), 업체 노출 켜기, 업체별 수수료(건당 정액 / 계약금액 %, 월말·건별), 기간 정산서 만들기·발행·입금 확인, 광고 승인·금액, 서비스 분류.
 - 운영사 지정: 운영사 사업체(예: '집대리')의 대표가 `/platform` 에서 한 번 지정한다. 나노마스터 등 기존 사업체는 `/market/profile` 에서 업체 소개를 만들고 운영자가 노출을 켜면 협력업체로 나온다.
+
+## 집대리 앱 연동
+
+소비자 앱 [kdolbae/jipdarie](https://github.com/kdolbae/jipdarie)(React + Capacitor, 회원·컨설팅 요청은 Cloudflare Worker + D1)과 이렇게 잇는다. 데이터 원본은 이 시스템이고, 앱에는 비밀값을 두지 않는다.
+
+| 흐름 | 방향 | 주소 | 인증 |
+| --- | --- | --- | --- |
+| 컨설팅 요청 → 문의 인입함 | 앱 서버 → 여기 | `POST /api/public/inquiry` (`channel: "app"`, `external_id` = 앱 요청 id) | 사업체 문의 키 (`x-api-key`, 앱 Worker 비밀값 `MANAGEAPP_INQUIRY_KEY`) |
+| 실제 계약 금액 → 앱 예상가격 | 앱 → 여기 | `GET /api/public/v1/price-stats?slug=` | 없음 (공종·지역별 집계만, 5건 미만 묶음 제외) |
+| 계약 링크 → 앱 "내 시공" | 앱 → 여기 | `GET /api/public/v1/contract?slug=&token=` | 계약 비밀 토큰 (고객 페이지와 같은 `customer_page()`) |
+| 앱에서 후기 | 앱 → 여기 | `POST /api/public/v1/contract/review` | 계약 비밀 토큰 |
+
+- 상품 화면의 **집대리 앱 공종**(`product.app_service_id`)을 골라야 그 상품의 계약 금액이 집계에 들어간다. 공종 id 목록은 `src/lib/app-link.ts` 이고, 앱 `src/data/services.ts` 와 같아야 한다.
+- 앱에서 온 문의는 인입함에 "집대리 앱"으로 뜨고, 상세에 앱이 보낸 우리집 정보(단지·평형·욕실·입주일·고른 시공)가 보인다.
+- 설정 > 연동 설정의 "집대리 앱 연결" 카드에 앱 쪽에 넣을 값이 있다.
 
 ## 구조
 

@@ -30,6 +30,7 @@ export default async function IntegrationsPage() {
   const rows = (outbox ?? []) as OutboxRow[];
   const origin = await siteOrigin();
   const endpoint = `${origin}/api/public/inquiry`;
+  const priceStats = `${origin}/api/public/v1/price-stats?slug=${session.current.tenant.slug}`;
   const sample = `fetch("${endpoint}", {
   method: "POST",
   headers: { "content-type": "application/json", "x-api-key": "<발급받은 키>" },
@@ -115,6 +116,19 @@ export default async function IntegrationsPage() {
             <li>utm 값을 같이 보내면 문의마다 어느 광고·검색어에서 왔는지 남습니다.</li>
             <li>응답: 200 {"{ ok: true, id }"} · 401 키 오류 · 422 필수값 없음.</li>
           </ul>
+        </div>
+        <div className="card p-4">
+          <h2 className="text-sm font-semibold mb-1">집대리 앱 연결</h2>
+          <p className="text-xs text-muted mb-3">입주 준비 앱(집대리)과 세 가지가 이어집니다. 모두 위 문의 키와 사업체 slug 로 연결되고, 앱에는 비밀값을 넣지 않습니다.</p>
+          <ul className="text-xs text-muted list-disc pl-4 space-y-1.5">
+            <li><b className="text-fg">컨설팅 요청 → 문의 인입함.</b> 앱 서버(Cloudflare Worker) 비밀값에 <span className="mono">MANAGEAPP_URL={origin}</span> 과 위 문의 키를 <span className="mono">MANAGEAPP_INQUIRY_KEY</span> 로 넣으면, 앱의 &lsquo;컨설팅 요청하기&rsquo;가 &lsquo;집대리 앱&rsquo; 문의로 들어오고 알림이 갑니다.</li>
+            <li><b className="text-fg">실제 계약 금액 → 앱 예상가격.</b> 상품마다 &lsquo;집대리 앱 공종&rsquo;을 고르면 최근 계약 금액이 공종·지역별로 집계됩니다(5건 미만 묶음은 내보내지 않고, 앱은 30건부터 기준으로 씁니다). 앱 빌드 환경변수 <span className="mono">VITE_PRICE_ENDPOINT</span> 에 아래 주소를 넣습니다.</li>
+            <li><b className="text-fg">계약 링크 → 앱 &lsquo;내 시공&rsquo;.</b> 고객에게 보내는 계약 링크(<span className="mono">/c/…/…</span>)를 앱에 붙여 넣으면 일정·담당 기사·사진·잔액이 앱에서 보이고, 후기도 앱에서 남길 수 있습니다.</li>
+          </ul>
+          <div className="form-row mt-3">
+            <label className="label">가격 집계 주소</label>
+            <div className="flex gap-1.5"><div className="field mono text-xs flex items-center bg-bg text-muted break-all">{priceStats}</div><CopyButton text={priceStats} /></div>
+          </div>
         </div>
       </div>
     </div>

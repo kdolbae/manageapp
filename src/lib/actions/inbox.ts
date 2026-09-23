@@ -22,7 +22,7 @@ async function ctx(permission: string) {
 
 export async function createInquiry(_prev: ActionState, formData: FormData): Promise<ActionState> {
   const parsed = z
-    .object({ channel: z.enum(["web", "phone", "kakao", "partner", "walk_in", "fair", "other"]), name: optText(60), phone: optText(30), kind: optText(60), apt: optText(100), address: optText(200), message: optText(4000), branch_id: optUuid })
+    .object({ channel: z.enum(["web", "phone", "kakao", "partner", "walk_in", "fair", "app", "other"]), name: optText(60), phone: optText(30), kind: optText(60), apt: optText(100), address: optText(200), message: optText(4000), branch_id: optUuid })
     .safeParse(Object.fromEntries(formData));
   if (!parsed.success) return fail("입력값을 확인해 주세요.");
   if (!parsed.data.name && !parsed.data.phone) return fail("이름이나 전화번호는 있어야 합니다.");

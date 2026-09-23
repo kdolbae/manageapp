@@ -8,7 +8,7 @@ export const INQUIRY_STATUS: Record<string, { label: string; badge: BadgeFamily 
   closed: { label: "종료", badge: "wait" },
   spam: { label: "스팸", badge: "wait" },
 };
-export const INQUIRY_CHANNEL: Record<string, string> = { web: "홈페이지", phone: "전화", kakao: "카카오", partner: "협력업체", walk_in: "방문", fair: "박람회", other: "기타" };
+export const INQUIRY_CHANNEL: Record<string, string> = { web: "홈페이지", phone: "전화", kakao: "카카오", partner: "협력업체", walk_in: "방문", fair: "박람회", app: "집대리 앱", other: "기타" };
 export const CONSULT_CHANNEL: Record<string, string> = { call: "전화", sms: "문자", kakao: "카카오톡", visit: "방문", email: "메일", memo: "메모" };
 
 export function fmtDateTime(v: string) {

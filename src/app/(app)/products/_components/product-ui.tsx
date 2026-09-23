@@ -1,5 +1,6 @@
 import type { CodeValue } from "@/lib/codes";
 import { won } from "@/lib/format";
+import { APP_SERVICES } from "@/lib/app-link";
 
 export const KIND_LABEL: Record<string, string> = { single: "단품", package: "패키지", service: "서비스" };
 const KIND_BADGE: Record<string, string> = { single: "badge-wait", package: "badge-run", service: "badge-wait" };
@@ -49,6 +50,7 @@ export type ProductValues = {
   technician_rate: number | string;
   duration_min: number | null;
   description: string | null;
+  app_service_id?: string | null;
   status?: string;
 };
 
@@ -121,6 +123,19 @@ export function ProductFields({
           {workAreas.map((w) => (
             <option key={w.code} value={w.code}>
               {w.label}
+            </option>
+          ))}
+        </select>
+      </div>
+      <div className="form-row">
+        <label className="label" htmlFor="p-app-service">
+          집대리 앱 공종
+        </label>
+        <select id="p-app-service" name="app_service_id" defaultValue={product?.app_service_id ?? ""} className="field">
+          <option value="">연결 안 함</option>
+          {APP_SERVICES.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.label}
             </option>
           ))}
         </select>
