@@ -175,6 +175,7 @@ create table public.service_request (
   message             text,
   budget              numeric(14,0),
   directed_tenant_id  uuid references public.tenant(id),   -- 특정 업체에게만 보낸 요청
+  external_id         text,                                 -- 외부 회원 식별자 (예: 'jipdarie:<userId>' 집대리 소비자 앱)
   status              text not null default 'open' check (status in ('open','accepted','closed','canceled')),
   accepted_quote_id   uuid,
   phone_shared        boolean not null default false,      -- 고객이 선택 업체에 전화번호 공개
@@ -185,6 +186,7 @@ create table public.service_request (
   updated_at          timestamptz not null default now()
 );
 create index service_request_status_idx on public.service_request (status, created_at desc);
+create index service_request_external_idx on public.service_request (external_id, created_at desc) where external_id is not null;
 
 create table public.quote (
   id              uuid primary key default gen_random_uuid(),
@@ -689,13 +691,26 @@ begin
   if p->>'vendor_slug' is not null then
     select vc.tenant_id into directed from public.vendor_card vc where vc.slug = p->>'vendor_slug';
   end if;
-  insert into public.service_request (name, phone, email, region, apt, address, area_pyeong, move_in_date, categories, message, budget, directed_tenant_id, utm)
+  insert into public.service_request (name, phone, email, region, apt, address, area_pyeong, move_in_date, categories, message, budget, directed_tenant_id, external_id, utm)
   values (p->>'name', p->>'phone', p->>'email', p->>'region', p->>'apt', p->>'address', (p->>'area_pyeong')::int, (p->>'move_in_date')::date,
           coalesce((select array_agg(x) from jsonb_array_elements_text(coalesce(p->'categories', '[]'::jsonb)) x), '{}'),
-          p->>'message', (p->>'budget')::numeric, directed, coalesce(p->'utm', '{}'::jsonb))
+          p->>'message', (p->>'budget')::numeric, directed, nullif(p->>'external_id', ''), coalesce(p->'utm', '{}'::jsonb))
   returning id, token into rid, tok;
   return jsonb_build_object('id', rid, 'token', tok);
 end $$;
+
+-- 외부 회원(집대리 소비자 앱 등)의 요청 목록: 앱 서버가 서비스 키로 부른다. 토큰을 돌려주므로 앱이 /r/<token> 을 열 수 있다
+create or replace function public.requests_by_external(p_external text) returns jsonb
+language sql stable security definer set search_path = public as $$
+  select coalesce(jsonb_agg(jsonb_build_object(
+           'id', r.id, 'token', r.token, 'status', r.status, 'region', r.region, 'apt', r.apt, 'categories', to_jsonb(r.categories),
+           'created_at', r.created_at, 'expires_at', r.expires_at, 'accepted_quote_id', r.accepted_quote_id,
+           'quote_count', (select count(*) from public.quote q where q.request_id = r.id and q.status <> 'withdrawn'),
+           'unread_count', (select count(*) from public.request_message m where m.request_id = r.id and m.sender = 'vendor' and m.read_at is null))
+         order by r.created_at desc), '[]'::jsonb)
+  from public.service_request r
+  where p_external is not null and p_external <> '' and r.external_id = p_external
+$$;
 
 create or replace function app.request_by_token(p_token text) returns public.service_request
 language sql stable security definer set search_path = public as $$
@@ -785,6 +800,7 @@ revoke execute on function public.request_accept(text, uuid) from public, anon, 
 revoke execute on function public.request_customer_message(text, uuid, text) from public, anon, authenticated;
 revoke execute on function public.request_share_phone(text, boolean) from public, anon, authenticated;
 revoke execute on function public.request_close(text) from public, anon, authenticated;
+revoke execute on function public.requests_by_external(text) from public, anon, authenticated;
 grant execute on function public.vendor_apply(jsonb) to service_role;
 grant execute on function public.request_create(jsonb) to service_role;
 grant execute on function public.request_page(text) to service_role;
@@ -792,6 +808,7 @@ grant execute on function public.request_accept(text, uuid) to service_role;
 grant execute on function public.request_customer_message(text, uuid, text) to service_role;
 grant execute on function public.request_share_phone(text, boolean) to service_role;
 grant execute on function public.request_close(text) to service_role;
+grant execute on function public.requests_by_external(text) to service_role;
 grant execute on function public.claim_platform_operator(uuid) to authenticated;
 grant execute on function public.approve_vendor(uuid, text) to authenticated;
 grant execute on function public.build_platform_settlement(uuid, date, date) to authenticated;

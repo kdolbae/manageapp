@@ -84,7 +84,12 @@ end $$;
 reset role;
 set role service_role;
 select set_config('request.jwt.claim.sub', '', false);   -- 서비스 키에는 sub 가 없다
-select public.request_create('{"name":"김서연","phone":"010-1234-5678","region":"대구 수성구","apt":"힐스테이트","area_pyeong":34,"categories":["coating"],"message":"주방·욕실 코팅 견적 부탁드려요","move_in_date":"2026-10-20"}') as req \gset
+select public.request_create('{"name":"김서연","phone":"010-1234-5678","region":"대구 수성구","apt":"힐스테이트","area_pyeong":34,"categories":["coating"],"message":"주방·욕실 코팅 견적 부탁드려요","move_in_date":"2026-10-20","external_id":"jipdarie:u123"}') as req \gset
+do $$ begin
+  if jsonb_array_length(public.requests_by_external('jipdarie:u123')) <> 1 then raise exception 'requests_by_external'; end if;
+  if (public.requests_by_external('jipdarie:u123')->0->>'token') is null then raise exception 'external list has no token'; end if;
+  if jsonb_array_length(public.requests_by_external('')) <> 0 then raise exception 'empty external id must return nothing'; end if;
+end $$;
 reset role;
 select (:'req'::jsonb)->>'id' as rid \gset
 select (:'req'::jsonb)->>'token' as rtok \gset
