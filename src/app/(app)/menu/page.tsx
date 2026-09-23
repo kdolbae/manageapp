@@ -3,12 +3,16 @@ import { requireTenant } from "@/lib/auth/session";
 import { NAV, visible } from "@/lib/nav";
 import { Icon } from "@/components/icons";
 import { InstallButton, Installable } from "@/components/pwa";
+import { createClient } from "@/lib/supabase/server";
+import { platformContext } from "@/lib/market";
 
 export const metadata = { title: "메뉴" };
 
 export default async function MenuPage() {
   const session = await requireTenant();
-  const groups = NAV.map((g) => ({ ...g, items: visible(g.items, session.can) })).filter((g) => g.items.length > 0);
+  const platform = await platformContext(await createClient(), session.current.tenant_id, session.can);
+  const can = (p: string) => (p === "platform.manage" ? platform.isPlatformAdmin : session.can(p));
+  const groups = NAV.map((g) => ({ ...g, items: visible(g.items, can) })).filter((g) => g.items.length > 0);
   return (
     <div>
       <div className="panel-head"><h1>전체 메뉴</h1></div>

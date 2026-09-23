@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { supabaseEnv } from "@/lib/supabase/env";
 
 // 로그인 없이 열 수 있는 경로
-const PUBLIC_PREFIXES = ["/login", "/signup", "/offline", "/auth/", "/invite/", "/c/", "/api/public/"];
+const PUBLIC_PREFIXES = ["/login", "/signup", "/offline", "/auth/", "/invite/", "/c/", "/api/public/", "/apply", "/vendors", "/vendors/", "/request", "/r/"];
 
 function isPublic(pathname: string) {
   return PUBLIC_PREFIXES.some((p) => (p.endsWith("/") ? pathname.startsWith(p) : pathname === p));

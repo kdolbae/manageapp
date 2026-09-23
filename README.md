@@ -26,6 +26,7 @@ npm run lint && npx tsc --noEmit && npm run build
   - `20261003001100_groupware` 공지·결재(다단계)·휴가·연차 잔여 뷰
   - `20261004001200_customer_page` 계약 비밀 링크(public_token)와 고객 페이지 함수 `customer_page()`·`customer_submit_review()`·`customer_inquiry()`
   - `20261005001300_campaign` 캠페인(UTM 정규화). 유입 링크는 `/sales/campaigns` 에서 만든다
+  - `20261006001400_platform` 집대리 플랫폼 층: 운영사 지정(`claim_platform_operator()`), 협력업체 신청·승인(`approve_vendor()` → 사업체·대표 초대), 업체 소개·노출(`vendor_profile`, `vendor_card` 뷰), 고객 요청·견적·대화(`service_request`·`quote`·`request_message`, 업체용 뷰 `market_request` 는 이름 가림·연락처 비노출), 수수료·정산(`platform_fee`, `build_platform_settlement()`), 상단 노출 광고(`vendor_promotion`)
 - `supabase/tests/local_stub.sql` — Supabase 없이 로컬 Postgres 에서 검증할 때만 쓰는 스텁(auth 스키마·역할). 실제 프로젝트에 적용 금지.
 - `supabase/tests/rls_*.sql` — 사업체 간 격리·권한 상승 차단·범위(own/branch) 테스트. 마이그레이션 순서대로 적용한 뒤 실행한다.
 
@@ -44,6 +45,13 @@ done
 - 앱 내 알림: 헤더의 종. Supabase Realtime 으로 새 알림이 바로 뜬다.
 - 고객 페이지: `/c/<사업체 slug>` 브랜드 페이지(승인된 후기·마케팅 사용 사진·문의 폼), `/c/<slug>/<계약 토큰>` 고객용 계약 페이지(일정·기사·사진·잔액·후기). 서비스 키로만 DB 를 읽으므로 `SUPABASE_SECRET_KEY` 가 있어야 열린다.
 - PWA: `public/manifest.webmanifest` + `public/sw.js`. 배포마다 `sw.js` 의 VERSION 을 올린다. 시공 시작/완료는 오프라인이면 큐에 쌓였다가 연결되면 전송된다.
+
+## 집대리 마켓(플랫폼 층)
+
+- 공개 페이지(로그인 없음, 서비스 키로만 DB 접근): `/apply` 협력업체 신청, `/vendors` 업체 디렉터리(분류·지역 검색, 상단 노출 광고 먼저), `/vendors/<slug>` 업체 소개, `/request` 고객 견적 요청, `/r/<token>` 고객 요청 페이지(견적 비교·선택·업체와 대화·전화번호 공개 토글).
+- 업체 화면(`/market`, 권한 market.read/write/settle): 요청 목록·견적 제출·대화·업체 소개 편집·정산서·상단 노출 신청. 업체에는 고객 이름 일부와 단지까지만 보이고, 전화번호는 고객이 그 업체를 선택하고 공개를 켠 뒤에만 보인다.
+- 운영자 화면(`/platform`, 운영사 사업체로 접속한 platform.manage 권한자): 신청 심사·승인(사업체 자동 생성 + 대표 초대 링크), 업체 노출 켜기, 업체별 수수료(건당 정액 / 계약금액 %, 월말·건별), 기간 정산서 만들기·발행·입금 확인, 광고 승인·금액, 서비스 분류.
+- 운영사 지정: 운영사 사업체(예: '집대리')의 대표가 `/platform` 에서 한 번 지정한다. 나노마스터 등 기존 사업체는 `/market/profile` 에서 업체 소개를 만들고 운영자가 노출을 켜면 협력업체로 나온다.
 
 ## 구조
 

@@ -7,18 +7,22 @@ import { TenantSwitcher } from "@/components/tenant-switcher";
 import { NotificationBell, type Notice } from "@/components/notification-bell";
 import { createClient } from "@/lib/supabase/server";
 import { supabaseEnv } from "@/lib/supabase/env";
+import { platformContext } from "@/lib/market";
 
 // 로그인·사업체 컨텍스트가 필요하므로 항상 요청 시점에 렌더링한다.
 export const dynamic = "force-dynamic";
 
 export default async function AppLayout({ children }: LayoutProps<"/">) {
   const session = await requireTenant();
-  const groups = NAV.map((g) => ({ ...g, items: visible(g.items, session.can) })).filter((g) => g.items.length > 0);
-  const tabs = visible(MOBILE_TABS, session.can);
+  const supabase = await createClient();
+  const platform = await platformContext(supabase, session.current.tenant_id, session.can);
+  // 플랫폼 운영 메뉴는 운영사 사업체로 접속한 운영자에게만
+  const can = (p: string) => (p === "platform.manage" ? platform.isPlatformAdmin : session.can(p));
+  const groups = NAV.map((g) => ({ ...g, items: visible(g.items, can) })).filter((g) => g.items.length > 0);
+  const tabs = visible(MOBILE_TABS, can);
   const tenants = session.memberships.map((m) => ({ id: m.tenant_id, name: m.tenant.name }));
   const name = session.profile?.display_name || session.user.email || "";
   const roleName = session.current.role.name;
-  const supabase = await createClient();
   const { data: notices } = await supabase.from("inapp_notification").select("id, kind, title, body, link, created_at, read_at").eq("profile_id", session.user.id).order("created_at", { ascending: false }).limit(20);
 
   return (

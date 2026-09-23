@@ -1,6 +1,6 @@
 import {
   Gauge, Inbox, FileText, FilePlus, CalendarCheck, Wrench, Wallet, Users, Package, Warehouse,
-  Image, ChartBar, Landmark, Building, Settings, Menu, MapPin, Shield, type LucideIcon,
+  Image, ChartBar, Landmark, Building, Settings, Menu, MapPin, Shield, Store, type LucideIcon,
 } from "lucide-react";
 
 const ICONS: Record<string, LucideIcon> = {
@@ -22,6 +22,7 @@ const ICONS: Record<string, LucideIcon> = {
   menu: Menu,
   "map-pin": MapPin,
   shield: Shield,
+  store: Store,
 };
 
 export function Icon({ name, size = 16, className }: { name: string; size?: number; className?: string }) {

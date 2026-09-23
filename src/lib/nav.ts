@@ -48,6 +48,13 @@ export const NAV: NavGroup[] = [
       { href: "/settings", label: "설정", icon: "settings", perm: "member.manage" },
     ],
   },
+  {
+    title: "집대리 마켓",
+    items: [
+      { href: "/market", label: "요청·견적·정산", icon: "store", perm: "market.read" },
+      { href: "/platform", label: "플랫폼 운영", icon: "shield", perm: "platform.manage" }, // 운영사 사업체로 접속했을 때만 (layout 에서 거른다)
+    ],
+  },
 ];
 
 /** 모바일 하단 탭 5개 */
