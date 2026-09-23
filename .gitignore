@@ -59,3 +59,10 @@ desktop.ini
 # ===== 로그 =====
 *.log
 npm-debug.log*
+
+# ===== Next.js / Vercel =====
+.vercel
+*.tsbuildinfo
+next-env.d.ts
+.pnp
+.pnp.*
