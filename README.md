@@ -20,6 +20,12 @@ npm run lint && npx tsc --noEmit && npm run build
   - `20260926000400_ledger` 수납·할인·환불 원장(무효 처리만, 삭제 없음), `contract_summary`·`job_summary` 뷰
   - `20260927000500_assignment` 일별 배정 한도·시공자 휴무
   - `20260929000700_inquiry_notify` 문의·상담 기록·알림 아웃박스·앱 내 알림·연동 설정, `ingest_web_inquiry()`
+  - `20260928000600_media_content` 시공 사진(Storage 버킷 media)·후기·콘텐츠·푸시 구독
+  - `20260930000800_finance` 경비·기사 정산(`build_payout()`)·경비 분류 기본값
+  - `20261001000900_inventory` 창고·품목·단가(별도 테이블)·입출고·금액(별도 테이블)·재고 뷰
+  - `20261003001100_groupware` 공지·결재(다단계)·휴가·연차 잔여 뷰
+  - `20261004001200_customer_page` 계약 비밀 링크(public_token)와 고객 페이지 함수 `customer_page()`·`customer_submit_review()`·`customer_inquiry()`
+  - `20261005001300_campaign` 캠페인(UTM 정규화). 유입 링크는 `/sales/campaigns` 에서 만든다
 - `supabase/tests/local_stub.sql` — Supabase 없이 로컬 Postgres 에서 검증할 때만 쓰는 스텁(auth 스키마·역할). 실제 프로젝트에 적용 금지.
 - `supabase/tests/rls_*.sql` — 사업체 간 격리·권한 상승 차단·범위(own/branch) 테스트. 마이그레이션 순서대로 적용한 뒤 실행한다.
 
@@ -36,11 +42,13 @@ done
 - 홈페이지 문의: `POST /api/public/inquiry` (헤더 `x-api-key`). 키는 `/settings/integrations` 에서 발급하며 해시만 저장한다.
 - Teams: 워크플로 웹훅 주소를 `/settings/integrations` 에 저장하면 새 문의마다 카드가 간다. 발송은 문의 인입 직후와 시간마다(`/api/internal/deliver`, Vercel cron, `CRON_SECRET`).
 - 앱 내 알림: 헤더의 종. Supabase Realtime 으로 새 알림이 바로 뜬다.
+- 고객 페이지: `/c/<사업체 slug>` 브랜드 페이지(승인된 후기·마케팅 사용 사진·문의 폼), `/c/<slug>/<계약 토큰>` 고객용 계약 페이지(일정·기사·사진·잔액·후기). 서비스 키로만 DB 를 읽으므로 `SUPABASE_SECRET_KEY` 가 있어야 열린다.
+- PWA: `public/manifest.webmanifest` + `public/sw.js`. 배포마다 `sw.js` 의 VERSION 을 올린다. 시공 시작/완료는 오프라인이면 큐에 쌓였다가 연결되면 전송된다.
 
 ## 구조
 
 - `src/app/(auth)` 로그인·계정 만들기, `src/app/onboarding` 첫 사업체 만들기, `src/app/invite/[token]` 초대 수락
-- `src/app/(app)` 로그인 후 화면. `layout.tsx` 가 사이드바(데스크톱)·하단 탭(모바일) 셸. 화면: `contracts`(계약) `assign`(배정 보드) `jobs`(일정·오늘 시공) `ledger`(수납) `people`(고객·시공자·협력업체) `products`(상품·단가) `inbox`(문의) `settings`
+- `src/app/(app)` 로그인 후 화면. `layout.tsx` 가 사이드바(데스크톱)·하단 탭(모바일) 셸. 화면: `contracts`(계약) `assign`(배정 보드) `jobs`(일정·오늘 시공) `ledger`(수납) `people`(고객·시공자·협력업체) `products`(상품·단가) `inbox`(문의) `content`(사진·후기·콘텐츠) `finance`(경비·정산·손익) `inventory`(자재·창고) `groupware`(공지·조직·결재·휴가) `settings`. 고객용은 `src/app/c/[slug]`
 - `src/lib/actions/*.ts` 서버 액션(zod 검증 → Supabase → revalidatePath). 화면은 서버 컴포넌트, 폼은 `components/action-form.tsx`
 - `src/lib/notify/` Teams 카드 발송과 아웃박스 처리, `src/lib/supabase/admin.ts` 서비스 키 클라이언트(서버 전용)
 - `src/lib/auth/session.ts` 로그인 사용자·현재 사업체·권한 (`session.can("contract.write")`)

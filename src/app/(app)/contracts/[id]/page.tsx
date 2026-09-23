@@ -6,7 +6,11 @@ import { codeValues, labelOf } from "@/lib/codes";
 import { phone, won, shortDate } from "@/lib/format";
 import { CONTRACT_STATUS, JOB_STATUS, JOB_KIND, TIME_SLOT, APPROVAL, LEDGER_TYPE, workAreaClass } from "@/lib/contracts";
 import { ActionForm, SubmitButton } from "@/components/action-form";
+import { CopyButton } from "@/components/copy-button";
+import { siteOrigin } from "@/lib/origin";
 import { updateContract, setApproval, cancelContract, addLine, updateLine, deleteLine, addJob, updateJob, removeJob, addLedgerEntry, voidLedgerEntry } from "@/lib/actions/contracts";
+import { MEDIA_KIND, signedUrlMap } from "@/lib/media";
+import { Thumb } from "@/app/(app)/content/media-ui";
 
 export const metadata = { title: "계약" };
 
@@ -64,6 +68,13 @@ export default async function ContractPage({ params }: PageProps<"/contracts/[id
     jobIds.length ? supabase.from("status_history").select("*").in("entity_id", jobIds).order("at", { ascending: false }) : Promise.resolve({ data: [] as History[] }),
   ]);
   const history = ([...(h1 ?? []), ...(h2 ?? [])] as History[]).sort((a, b) => (a.at < b.at ? 1 : -1)).slice(0, 30);
+  // 사진: 이 계약의 최근 12장 + 전체 장수 (원본은 비공개 버킷이라 서명 URL 로 그린다)
+  const [{ data: photos }, { count: photoCount }] = await Promise.all([
+    supabase.from("media_asset").select("id, job_id, kind, path, caption, marketing_ok").eq("contract_id", id).is("deleted_at", null).order("created_at", { ascending: false }).limit(12),
+    supabase.from("media_asset").select("id", { count: "exact", head: true }).eq("contract_id", id).is("deleted_at", null),
+  ]);
+  const photoList = (photos ?? []) as { id: string; job_id: string | null; kind: string; path: string; caption: string | null; marketing_ok: boolean }[];
+  const photoUrls = await signedUrlMap(supabase, photoList.map((p) => p.path));
 
   const st = CONTRACT_STATUS[summary.status] ?? { label: summary.status, badge: "wait" };
   const ap = APPROVAL[contract.approval_status];
@@ -88,7 +99,8 @@ export default async function ContractPage({ params }: PageProps<"/contracts/[id
           <span className={`badge badge-${st.badge}`}>{st.label}</span>
           {contract.approval_status !== "approved" && <span className={`badge badge-${ap.badge}`}>{ap.label}</span>}
         </h1>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          {contract.public_token && <CopyButton text={`${await siteOrigin()}/c/${session.current.tenant.slug}/${contract.public_token}`} label="고객 페이지 링크 복사" />}
           {session.can("contract.approve") && !contract.canceled_at && contract.approval_status === "pending" && (
             <>
               <ActionForm action={setApproval}><input type="hidden" name="id" value={id} /><input type="hidden" name="approval_status" value="approved" /><SubmitButton className="btn btn-primary">승인</SubmitButton></ActionForm>
@@ -191,6 +203,7 @@ export default async function ContractPage({ params }: PageProps<"/contracts/[id
                       <td><span className={`badge badge-${js.badge}`}>{js.label}</span></td>
                       <td className="text-muted text-xs">{j.memo}</td>
                       <td>
+                        <Link href={`/jobs/${j.id}`} className="text-xs whitespace-nowrap">사진·상세</Link>
                         {editable && (
                           <details>
                             <summary className="cursor-pointer text-accent text-xs">변경</summary>
@@ -239,6 +252,27 @@ export default async function ContractPage({ params }: PageProps<"/contracts/[id
                 </ActionForm>
               </details>
             )}
+          </section>
+
+          {/* 사진: 시공 건별로 올린 사진 중 최근 12장 */}
+          <section className="card">
+            <div className="panel-head"><h2>사진 <span className="sub">{photoCount ?? photoList.length}장</span></h2></div>
+            {photoList.length === 0 ? (
+              <p className="p-4 text-sm text-muted">아직 사진이 없습니다. 시공 건의 사진·상세 에서 올립니다.</p>
+            ) : (
+              <div className="p-3 grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
+                {photoList.map((p) => (
+                  <Link key={p.id} href={p.job_id ? `/jobs/${p.job_id}` : `/contracts/${id}`} className="card overflow-hidden no-underline text-text">
+                    <Thumb src={photoUrls.get(p.path)} alt={p.caption ?? MEDIA_KIND[p.kind] ?? "사진"} />
+                    <div className="px-1.5 py-1 text-[11px] flex items-center justify-between gap-1">
+                      <span className="truncate">{MEDIA_KIND[p.kind] ?? p.kind}{p.caption ? ` · ${p.caption}` : ""}</span>
+                      {p.marketing_ok && <span className="text-success shrink-0">마케팅</span>}
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            )}
+            {(photoCount ?? 0) > photoList.length && <p className="px-3 pb-3 text-xs text-muted">최근 12장만 보입니다. 나머지는 각 시공 건에서 봅니다.</p>}
           </section>
 
           {/* 원장 */}

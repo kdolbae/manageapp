@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireTenant } from "@/lib/auth/session";
 import { NAV, visible } from "@/lib/nav";
 import { Icon } from "@/components/icons";
+import { InstallButton, Installable } from "@/components/pwa";
 
 export const metadata = { title: "메뉴" };
 
@@ -24,6 +25,13 @@ export default async function MenuPage() {
             ))}
           </div>
         ))}
+        <Installable>
+          <div className="card p-4">
+            <div className="text-sm font-semibold">앱으로 설치</div>
+            <p className="text-xs text-muted mt-1 mb-3">휴대폰·태블릿 홈 화면에 추가하면 앱처럼 바로 열리고, 연결이 끊겨도 기본 화면이 뜹니다.</p>
+            <InstallButton />
+          </div>
+        </Installable>
         <div className="text-xs text-muted px-1">
           {session.profile?.display_name || session.user.email} · {session.current.role.name}
         </div>

@@ -51,7 +51,9 @@ export async function setJobStatus(_prev: ActionState, formData: FormData): Prom
   const supabase = await createClient();
   const patch: Record<string, unknown> = { status: parsed.data.status };
   if (parsed.data.memo) patch.memo = parsed.data.memo;
-  const { data: job } = await supabase.from("job").select("contract_id").eq("id", parsed.data.id).maybeSingle();
+  const { data: job } = await supabase.from("job").select("contract_id, status").eq("id", parsed.data.id).maybeSingle();
+  if (job?.status === "done" && parsed.data.status === "in_progress") return fail("이미 완료된 시공입니다.");
+  if (job?.status === parsed.data.status) return { ok: "이미 반영되어 있습니다." };
   const { error, count } = await supabase.from("job").update(patch, { count: "exact" }).eq("id", parsed.data.id).eq("tenant_id", session.current.tenant_id);
   if (error) return fail(friendly(error.code, error.message));
   if (!count) return fail("시공 건을 찾지 못했거나 권한이 없습니다.");

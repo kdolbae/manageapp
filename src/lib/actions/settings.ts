@@ -37,15 +37,23 @@ export async function updateTenant(_prev: ActionState, formData: FormData): Prom
       app_name: optionalText(30),
       color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional().or(z.literal("")),
       phone: optionalText(30),
+      tagline: optionalText(80),
+      address: optionalText(120),
+      kakao_url: z.string().trim().url().max(200).optional().or(z.literal("")),
+      instagram_url: z.string().trim().url().max(200).optional().or(z.literal("")),
     })
     .safeParse(Object.fromEntries(formData));
-  if (!parsed.success) return fail("입력값을 확인해 주세요 (색은 #RRGGBB 형식).");
+  if (!parsed.success) return fail("입력값을 확인해 주세요 (색은 #RRGGBB, 링크는 https:// 로 시작).");
   const { supabase, tenantId } = await ctx("tenant.manage");
   const { data: current } = await supabase.from("tenant").select("brand").eq("id", tenantId).single();
   const brand = { ...((current?.brand as Record<string, unknown>) ?? {}) };
   brand.app_name = parsed.data.app_name ?? null;
   brand.color = parsed.data.color || null;
   brand.phone = parsed.data.phone ?? null;
+  brand.tagline = parsed.data.tagline ?? null;
+  brand.address = parsed.data.address ?? null;
+  brand.kakao_url = parsed.data.kakao_url || null;
+  brand.instagram_url = parsed.data.instagram_url || null;
   const { error } = await supabase
     .from("tenant")
     .update({ name: parsed.data.name, business_no: parsed.data.business_no ?? null, brand })

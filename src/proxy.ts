@@ -3,7 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { supabaseEnv } from "@/lib/supabase/env";
 
 // 로그인 없이 열 수 있는 경로
-const PUBLIC_PREFIXES = ["/login", "/signup", "/auth/", "/invite/", "/c/", "/api/public/"];
+const PUBLIC_PREFIXES = ["/login", "/signup", "/offline", "/auth/", "/invite/", "/c/", "/api/public/"];
 
 function isPublic(pathname: string) {
   return PUBLIC_PREFIXES.some((p) => (p.endsWith("/") ? pathname.startsWith(p) : pathname === p));
@@ -46,6 +46,6 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/((?!_next/static|_next/image|favicon.ico|manifest.webmanifest|icons/|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
+    "/((?!_next/static|_next/image|favicon.ico|sw\\.js|manifest.webmanifest|icons/|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico)$).*)",
   ],
 };

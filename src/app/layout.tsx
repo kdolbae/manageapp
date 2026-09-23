@@ -1,11 +1,15 @@
 import type { Metadata, Viewport } from "next";
+import { Pwa } from "@/components/pwa";
+import { JobQueueSync } from "@/components/job-status-buttons";
 import "./globals.css";
 
 export const metadata: Metadata = {
   title: { default: "집대리", template: "%s · 집대리" },
   description: "시공·계약·결제 관리",
   applicationName: "집대리",
+  manifest: "/manifest.webmanifest",
   appleWebApp: { capable: true, title: "집대리", statusBarStyle: "default" },
+  icons: { apple: "/icons/apple-touch-icon.png" },
 };
 
 export const viewport: Viewport = {
@@ -35,7 +39,12 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         />
         <script dangerouslySetInnerHTML={{ __html: themeInit }} />
       </head>
-      <body className="min-h-dvh">{children}</body>
+      <body className="min-h-dvh">
+        {/* 서비스 워커·설치 프롬프트·오프라인 띠, 그리고 오프라인에 쌓인 시공 상태 전송 */}
+        <Pwa />
+        <JobQueueSync />
+        {children}
+      </body>
     </html>
   );
 }

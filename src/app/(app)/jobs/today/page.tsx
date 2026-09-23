@@ -6,7 +6,7 @@ import { won, phone } from "@/lib/format";
 import { todayKST, addDays, weekday, mmdd, isValidYmd } from "@/lib/dates";
 import { JOB_STATUS, JOB_KIND, TIME_SLOT, workAreaClass } from "@/lib/contracts";
 import { ActionForm, SubmitButton } from "@/components/action-form";
-import { setJobStatus } from "@/lib/actions/jobs";
+import { JobStatusButtons } from "@/components/job-status-buttons";
 import { addLedgerEntry } from "@/lib/actions/contracts";
 
 export const metadata = { title: "오늘 시공" };
@@ -68,14 +68,10 @@ export default async function TodayPage({ searchParams }: PageProps<"/jobs/today
                 <div className="bg-surface p-2"><div className="text-[11.5px] text-muted">받을 잔금</div><div className={`mono text-[16px] font-bold ${Number(j.balance) > 0 ? "text-danger" : "text-success"}`}>{Number(j.balance) > 0 ? won(j.balance) : "수납 완료"}</div></div>
               </div>
               <div className="grid grid-cols-2 gap-2 mt-3">
-                {j.status !== "done" && j.status !== "in_progress" && (
-                  <ActionForm action={setJobStatus}><input type="hidden" name="id" value={j.id} /><input type="hidden" name="status" value="in_progress" /><SubmitButton className="btn btn-primary w-full">시공 시작</SubmitButton></ActionForm>
-                )}
-                {j.status === "in_progress" && (
-                  <ActionForm action={setJobStatus}><input type="hidden" name="id" value={j.id} /><input type="hidden" name="status" value="done" /><SubmitButton className="btn btn-primary w-full">시공 완료</SubmitButton></ActionForm>
-                )}
-                {j.status === "done" && <div className="btn w-full text-success">완료됨</div>}
+                {/* 시작·완료: 오프라인이면 큐에 쌓였다가 연결되면 전송 (components/job-status-buttons.tsx) */}
+                <JobStatusButtons jobId={j.id} status={j.status} />
                 {addr ? <a href={`https://map.kakao.com/link/search/${encodeURIComponent(addr)}`} target="_blank" rel="noreferrer" className="btn w-full">길 안내</a> : <Link href={`/contracts/${j.contract_id}`} className="btn w-full">계약 보기</Link>}
+                <Link href={`/jobs/${j.id}`} className="btn w-full col-span-2">사진 올리기 · 상세</Link>
               </div>
               {canLedger && Number(j.balance) > 0 && (
                 <details className="mt-2">
