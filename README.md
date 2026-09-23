@@ -67,6 +67,9 @@ done
 | 실제 계약 금액 → 앱 예상가격 | 앱 → 여기 | `GET /api/public/v1/price-stats?slug=` | 없음 (공종·지역별 집계만, 5건 미만 묶음 제외) |
 | 계약 링크 → 앱 "내 시공" | 앱 → 여기 | `GET /api/public/v1/contract?slug=&token=` | 계약 비밀 토큰 (고객 페이지와 같은 `customer_page()`) |
 | 앱에서 후기 | 앱 → 여기 | `POST /api/public/v1/contract/review` | 계약 비밀 토큰 |
+| 견적 요청 · 받은 견적 · 선택 · 업체와 대화 | 앱 서버 → 여기 | `/api/app/v1/categories`, `/api/app/v1/requests`, `/api/app/v1/requests/<id>`, `/api/app/v1/requests/<id>/{accept,messages,phone,close}` | 서버 키 `APP_SERVER_KEY` (Bearer) + 회원 `x-app-user` → 요청 `external_id = 'jipdarie:<회원 id>'` |
+
+- 앱 회원 계정(카카오·네이버·구글 로그인)은 앱 Worker 가 갖고, 이 시스템은 `external_id` 로 그 회원의 요청만 다룬다. 요청 토큰은 앱으로 내보내지 않는다. 마켓 함수(`request_*`, `requests_by_external`)는 `20261007001500_platform` 에 있다.
 
 - 상품 화면의 **집대리 앱 공종**(`product.app_service_id`)을 골라야 그 상품의 계약 금액이 집계에 들어간다. 공종 id 목록은 `src/lib/app-link.ts` 이고, 앱 `src/data/services.ts` 와 같아야 한다.
 - 앱에서 온 문의는 인입함에 "집대리 앱"으로 뜨고, 상세에 앱이 보낸 우리집 정보(단지·평형·욕실·입주일·고른 시공)가 보인다.
