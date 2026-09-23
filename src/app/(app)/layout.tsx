@@ -4,6 +4,9 @@ import { NAV, MOBILE_TABS, visible } from "@/lib/nav";
 import { SideNav, MobileTabs } from "@/components/side-nav";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { TenantSwitcher } from "@/components/tenant-switcher";
+import { NotificationBell, type Notice } from "@/components/notification-bell";
+import { createClient } from "@/lib/supabase/server";
+import { supabaseEnv } from "@/lib/supabase/env";
 
 // 로그인·사업체 컨텍스트가 필요하므로 항상 요청 시점에 렌더링한다.
 export const dynamic = "force-dynamic";
@@ -15,6 +18,8 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
   const tenants = session.memberships.map((m) => ({ id: m.tenant_id, name: m.tenant.name }));
   const name = session.profile?.display_name || session.user.email || "";
   const roleName = session.current.role.name;
+  const supabase = await createClient();
+  const { data: notices } = await supabase.from("inapp_notification").select("id, kind, title, body, link, created_at, read_at").eq("profile_id", session.user.id).order("created_at", { ascending: false }).limit(20);
 
   return (
     <div className="min-h-dvh md:grid md:grid-cols-[150px_minmax(0,1fr)]">
@@ -37,6 +42,7 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
             {session.current.branch && <span className="badge badge-wait">{session.current.branch.name}</span>}
           </div>
           <div className="flex items-center gap-2">
+            <NotificationBell initial={(notices ?? []) as Notice[]} userId={session.user.id} realtime={supabaseEnv().configured} />
             <ThemeToggle />
             <span className="hidden sm:inline text-xs text-muted truncate max-w-[160px]">{name}</span>
             <form action="/auth/signout" method="post">

@@ -29,7 +29,7 @@ export const NAV: NavGroup[] = [
     title: "사람·상품",
     items: [
       { href: "/people", label: "고객·시공자·협력업체", icon: "users", perm: "customer.read", day: 2 },
-      { href: "/products", label: "상품·단가", icon: "package", perm: "product.manage", day: 2 },
+      { href: "/products", label: "상품·단가", icon: "package", day: 2 },
       { href: "/inventory", label: "자재·창고", icon: "warehouse", perm: "inventory.read", day: 9 },
     ],
   },
@@ -64,6 +64,7 @@ export const SETTINGS_TABS: NavItem[] = [
   { href: "/settings/branches", label: "지점", icon: "map-pin", perm: "branch.manage" },
   { href: "/settings/members", label: "구성원", icon: "users", perm: "member.manage" },
   { href: "/settings/roles", label: "역할·권한", icon: "shield", perm: "member.manage" },
+  { href: "/settings/integrations", label: "홈페이지·Teams 연동", icon: "settings", perm: "tenant.manage" },
 ];
 
 export function visible(items: NavItem[], can: (p: string) => boolean) {

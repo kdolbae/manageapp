@@ -586,17 +586,17 @@ insert into public.role_permission (role_id, permission)
 -- 시공기사 (own 범위)
 insert into public.role_permission (role_id, permission)
   select '10000000-0000-4000-8000-000000000004', unnest(array[
-    'customer.read','contract.read','job.read','job.complete','ledger.read','ledger.write',
+    'customer.read','technician.read','contract.read','job.read','job.complete','ledger.read','ledger.write',
     'content.read','content.write','inventory.read','inventory.move','expense.write','approval.write']);
 -- 영업자 (own 범위)
 insert into public.role_permission (role_id, permission)
   select '10000000-0000-4000-8000-000000000005', unnest(array[
-    'customer.read','customer.write','contract.read','contract.write','job.read',
+    'customer.read','customer.write','technician.read','partner.read','contract.read','contract.write','job.read',
     'ledger.read','inquiry.read','inquiry.write','content.read','content.write','report.read','expense.write','approval.write']);
 -- 협력업체 (own 범위)
 insert into public.role_permission (role_id, permission)
   select '10000000-0000-4000-8000-000000000006', unnest(array[
-    'customer.write','contract.read','contract.write','job.read','content.read']);
+    'customer.read','customer.write','partner.read','contract.read','contract.write','job.read','content.read']);
 -- 조회
 insert into public.role_permission (role_id, permission)
   select '10000000-0000-4000-8000-000000000007', code from public.permission_catalog where code like '%.read';

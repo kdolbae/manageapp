@@ -5,10 +5,12 @@ import { usePathname } from "next/navigation";
 
 export function SettingsTabs({ tabs }: { tabs: { href: string; label: string }[] }) {
   const pathname = usePathname();
+  // 하위 경로가 겹치는 탭(/products 와 /products/categories)은 가장 긴 것 하나만 활성.
+  const current = tabs.filter((t) => pathname === t.href || pathname.startsWith(t.href + "/")).sort((a, b) => b.href.length - a.href.length)[0]?.href;
   return (
     <nav className="flex gap-1 px-4 border-b border-border bg-surface overflow-x-auto">
       {tabs.map((t) => {
-        const active = pathname === t.href || pathname.startsWith(t.href + "/");
+        const active = t.href === current;
         return (
           <Link
             key={t.href}

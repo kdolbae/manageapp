@@ -12,7 +12,7 @@
 기존에 나노마스터가 쓰던 레거시 시스템 **UFFICE**(Classic ASP)를 역분석해 범용 신규 플랫폼으로 재설계한 결과물이다.
 
 ## 현재 상태
-**코드 착수 (2026-09-23, D1).** 앱 코드는 `src/`(Next.js 16 App Router + Tailwind v4), 데이터베이스는 `supabase/migrations/`. 개발 방법과 구조는 `README.md`. 설계 문서 아카이브(`uffice/*.md`), 인쇄용 기능지도(`uffice/기능지도_인쇄.html`), 레거시 DB 스키마 초안(`uffice/schema.draft.prisma`)은 그대로 참고 자료다.
+**코드 진행 중 (2026-09-23 저녁, D1~D7 분량 작성: 권한·사람·상품·계약·원장·배정·문의 인입함. 남은 것: 모바일/PWA·사진, 콘텐츠, 모니터링·ERP, 자재·창고, 고객 페이지, 그룹웨어).** Supabase 프로젝트는 아직 없음(플랜 결정 대기) — 스키마는 로컬 Postgres 스텁에서 RLS 테스트로 검증. 앱 코드는 `src/`(Next.js 16 App Router + Tailwind v4), 데이터베이스는 `supabase/migrations/`. 개발 방법과 구조는 `README.md`. 설계 문서 아카이브(`uffice/*.md`), 인쇄용 기능지도(`uffice/기능지도_인쇄.html`), 레거시 DB 스키마 초안(`uffice/schema.draft.prisma`)은 그대로 참고 자료다.
 
 빌드 계획(12일, 9/23~10/4)과 도메인 모델 기본값은 계획서 페이지에 있다. 요약:
 - 사업체(tenant) = 격리 단위, 지점(branch) = 사업체 안의 범위. 새 사업 = 새 사업체.
