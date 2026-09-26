@@ -3,11 +3,15 @@ import { SubTabs } from "@/components/sub-tabs";
 
 export default async function SalesLayout({ children }: LayoutProps<"/sales">) {
   const session = await requireTenant();
-  const tabs = [{ href: "/sales", label: "영업 분석" }, { href: "/sales/campaigns", label: "캠페인·유입 링크" }];
+  const tabs = [
+    ...(session.can("report.read") ? [{ href: "/sales", label: "영업 분석" }] : []),
+    ...(session.can("conversion.read") ? [{ href: "/sales/online", label: "온라인 성과" }] : []),
+    ...(session.can("content.publish") ? [{ href: "/sales/campaigns", label: "캠페인·유입 링크" }] : []),
+  ];
   return (
     <div>
       <div className="panel-head"><h1>영업 <span className="sub">{session.current.tenant.name}</span></h1></div>
-      {session.can("report.read") || session.can("content.publish") ? (
+      {session.can("report.read") || session.can("content.publish") || session.can("conversion.read") ? (
         <>
           <SubTabs tabs={tabs} />
           {children}

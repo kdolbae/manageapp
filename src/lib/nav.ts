@@ -37,7 +37,7 @@ export const NAV: NavGroup[] = [
     title: "영업·콘텐츠",
     items: [
       { href: "/content", label: "사진·후기·콘텐츠", icon: "image", perm: "content.read" },
-      { href: "/sales", label: "영업 분석·캠페인", icon: "bar-chart", perm: ["report.read", "content.publish"] },
+      { href: "/sales", label: "영업 분석·온라인 성과", icon: "bar-chart", perm: ["report.read", "content.publish", "conversion.read"] },
     ],
   },
   {

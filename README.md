@@ -26,6 +26,7 @@ npm run lint && npx tsc --noEmit && npm run build
   - `20261003001100_groupware` 공지·결재(다단계)·휴가·연차 잔여 뷰
   - `20261004001200_customer_page` 계약 비밀 링크(public_token)와 고객 페이지 함수 `customer_page()`·`customer_submit_review()`·`customer_inquiry()`
   - `20261005001300_campaign` 캠페인(UTM 정규화). 유입 링크는 `/sales/campaigns` 에서 만든다
+  - `20261008001600_online_performance` 온라인 성과: 전환 결과(`conversion_outcome`, 계약 성사면 금액·계약 연결), 결과 단계 이름(`conversion_label`), 광고비·매출 직접 기록(`ad_spend_ledger`), 권한 conversion.read/write/labels
   - `20261007001500_platform` 집대리 플랫폼 층: 운영사 지정(`claim_platform_operator()`), 협력업체 신청·승인(`approve_vendor()` → 사업체·대표 초대), 업체 소개·노출(`vendor_profile`, `vendor_card` 뷰), 고객 요청·견적·대화(`service_request`·`quote`·`request_message`, 업체용 뷰 `market_request` 는 이름 가림·연락처 비노출), 수수료·정산(`platform_fee`, `build_platform_settlement()`), 상단 노출 광고(`vendor_promotion`)
 - `supabase/tests/local_stub.sql` — Supabase 없이 로컬 Postgres 에서 검증할 때만 쓰는 스텁(auth 스키마·역할). 실제 프로젝트에 적용 금지.
 - `supabase/tests/rls_*.sql` — 사업체 간 격리·권한 상승 차단·범위(own/branch) 테스트. 마이그레이션 순서대로 적용한 뒤 실행한다.
@@ -45,6 +46,13 @@ done
 - 앱 내 알림: 헤더의 종. Supabase Realtime 으로 새 알림이 바로 뜬다.
 - 고객 페이지: `/c/<사업체 slug>` 브랜드 페이지(승인된 후기·마케팅 사용 사진·문의 폼), `/c/<slug>/<계약 토큰>` 고객용 계약 페이지(일정·기사·사진·잔액·후기). 서비스 키로만 DB 를 읽으므로 `SUPABASE_SECRET_KEY` 가 있어야 열린다.
 - PWA: `public/manifest.webmanifest` + `public/sw.js`. 배포마다 `sw.js` 의 VERSION 을 올린다. 시공 시작/완료는 오프라인이면 큐에 쌓였다가 연결되면 전송된다.
+
+## 온라인 성과 (`/sales/online`)
+
+- 홈페이지에서 전화·카톡·견적폼을 누른 기록(나노마스터: 홈페이지 Supabase 의 `site_events`)을 서버가 읽기만 하고, 건마다 결과(계약 성사·유효 상담·효과 없음)와 계약 금액(공급가)·계약번호를 붙인다. 결과는 이 시스템 DB 에 누른 시각·채널과 함께 남아, 홈페이지 기록을 못 읽어도 광고비 대비 매출은 계산된다.
+- 광고비 = 자동(광고 도구 `data/daily_cost.json`, 부가세 별도) + 직접 기록, 매출 = 계약 성사 금액 + 직접 기록. 채널별 매출÷광고비·광고비 비율·계약당 광고비. 영업 분석(`/sales`)에도 요약 카드.
+- 연결은 배포 환경 변수 `ONLINE_SOURCES`(사업체 uuid → 홈페이지 Supabase 주소, 비밀이 든 변수 이름). 사업체 관리자가 고르지 못하게 일부러 설정 화면에 두지 않았다. `.env.example` 참고.
+- API: `GET/POST/PUT /api/conversions`, `GET/POST/DELETE /api/ad-ledger`. 이름·전화번호는 저장하지도 보여 주지도 않는다(메모에 전화번호 모양이면 API·DB 둘 다 거부).
 
 ## 집대리 마켓(플랫폼 층)
 

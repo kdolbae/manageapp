@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { requireTenant } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
 import { won } from "@/lib/format";
@@ -8,6 +9,7 @@ import { codeValues, labelOf } from "@/lib/codes";
 import { INQUIRY_CHANNEL } from "@/lib/inbox";
 import { Bars } from "@/components/bars";
 import { memberOptions } from "@/app/(app)/people/data";
+import { OnlineSummary } from "./online/summary";
 
 export const metadata = { title: "영업 분석" };
 
@@ -19,6 +21,7 @@ export default async function SalesPage({ searchParams }: PageProps<"/sales">) {
   const session = await requireTenant();
   const tid = session.current.tenant_id;
   if (!session.can("report.read")) {
+    if (session.can("conversion.read")) redirect("/sales/online");
     return <p className="p-4 text-sm text-muted">보고서 권한이 없습니다.</p>;
   }
   const sp = await searchParams;
@@ -99,6 +102,7 @@ export default async function SalesPage({ searchParams }: PageProps<"/sales">) {
       </div>
 
       <div className="grid gap-4 p-4 lg:grid-cols-2 items-start">
+        {session.can("conversion.read") && <OnlineSummary tenantId={tid} from={from} to={to} />}
         <div className="card p-4">
           <h2 className="text-sm font-semibold mb-1">주별 추이</h2>
           <p className="text-xs text-muted mb-3">계약일 기준, 월요일 시작 주.</p>
