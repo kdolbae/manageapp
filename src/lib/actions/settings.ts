@@ -41,11 +41,12 @@ export async function updateTenant(_prev: ActionState, formData: FormData): Prom
       address: optionalText(120),
       kakao_url: z.string().trim().url().max(200).optional().or(z.literal("")),
       instagram_url: z.string().trim().url().max(200).optional().or(z.literal("")),
+      contract_terms: optionalText(6000),
     })
     .safeParse(Object.fromEntries(formData));
-  if (!parsed.success) return fail("입력값을 확인해 주세요 (색은 #RRGGBB, 링크는 https:// 로 시작).");
+  if (!parsed.success) return fail("입력값을 확인해 주세요 (색은 #RRGGBB, 링크는 https:// 로 시작, 약관은 6,000자 이내).");
   const { supabase, tenantId } = await ctx("tenant.manage");
-  const { data: current } = await supabase.from("tenant").select("brand").eq("id", tenantId).single();
+  const { data: current } = await supabase.from("tenant").select("brand, settings").eq("id", tenantId).single();
   const brand = { ...((current?.brand as Record<string, unknown>) ?? {}) };
   brand.app_name = parsed.data.app_name ?? null;
   brand.color = parsed.data.color || null;
@@ -54,9 +55,14 @@ export async function updateTenant(_prev: ActionState, formData: FormData): Prom
   brand.address = parsed.data.address ?? null;
   brand.kakao_url = parsed.data.kakao_url || null;
   brand.instagram_url = parsed.data.instagram_url || null;
+  // 계약 약관은 settings.contract_terms 에 둔다. 비우면 null → DB 가 기본 약관(app.default_contract_terms)을 쓴다
+  const settings = {
+    ...((current?.settings as Record<string, unknown>) ?? {}),
+    contract_terms: parsed.data.contract_terms?.replace(/\r\n/g, "\n") ?? null,
+  };
   const { error } = await supabase
     .from("tenant")
-    .update({ name: parsed.data.name, business_no: parsed.data.business_no ?? null, brand })
+    .update({ name: parsed.data.name, business_no: parsed.data.business_no ?? null, brand, settings })
     .eq("id", tenantId);
   if (error) return fail(error.message);
   revalidatePath("/", "layout");

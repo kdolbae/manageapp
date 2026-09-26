@@ -5,7 +5,7 @@ import { codeValues } from "@/lib/codes";
 import { phone, won } from "@/lib/format";
 import { workAreaClass } from "@/lib/contracts";
 import { ActionForm, SubmitButton } from "@/components/action-form";
-import { createContract } from "@/lib/actions/contracts";
+import { createContract, createCustomerForContract } from "@/lib/actions/contracts";
 
 export const metadata = { title: "계약 등록" };
 
@@ -30,6 +30,7 @@ export default async function NewContractPage({ searchParams }: PageProps<"/cont
 
   // 1단계: 계약자 고르기
   if (!customerId) {
+    const canAddCustomer = session.can("customer.write");
     let results: Customer[] = [];
     if (q) {
       const digits = q.replace(/\D/g, "");
@@ -63,13 +64,35 @@ export default async function NewContractPage({ searchParams }: PageProps<"/cont
                     </tr>
                   ))}
                   {results.length === 0 && (
-                    <tr><td colSpan={4} className="text-muted">찾는 고객이 없습니다. <Link href="/people/customers">고객 등록</Link> 뒤 다시 찾아 주세요.</td></tr>
+                    <tr><td colSpan={4} className="text-muted">{canAddCustomer ? "찾는 고객이 없습니다. 아래에서 새 고객을 바로 등록할 수 있습니다." : <>찾는 고객이 없습니다. <Link href="/people/customers">고객 등록</Link> 뒤 다시 찾아 주세요.</>}</td></tr>
                   )}
                 </tbody>
               </table>
             </div>
           )}
-          {!q && <p className="text-xs text-muted">먼저 계약자를 찾습니다. 새 고객은 <Link href="/people/customers">고객 화면</Link>에서 등록한 뒤 여기서 고릅니다.</p>}
+          {!q && <p className="text-xs text-muted">{canAddCustomer ? "먼저 계약자를 찾습니다. 처음 오신 고객은 아래에서 바로 등록하고 계약을 이어서 작성할 수 있습니다." : <>먼저 계약자를 찾습니다. 새 고객은 <Link href="/people/customers">고객 화면</Link>에서 등록한 뒤 여기서 고릅니다.</>}</p>}
+          {canAddCustomer && (
+            // 박람회·현장용: 고객 화면을 거치지 않고 바로 등록 → 등록 즉시 2단계(계약 내용)로 넘어간다
+            <ActionForm action={createCustomerForContract} className="card p-4 grid gap-3">
+              <h2 className="text-sm font-semibold">새 고객 바로 등록 <span className="text-xs font-normal text-muted">박람회·현장용 — 등록하면 바로 계약 작성으로 넘어갑니다</span></h2>
+              <input type="hidden" name="branch_id" value={session.current.branch_id ?? ""} />
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="form-row">
+                  <label className="label" htmlFor="new_customer_name">이름<span className="req">*</span></label>
+                  <input id="new_customer_name" name="name" required maxLength={40} className="field" placeholder="고객 이름" defaultValue={q && !/\d/.test(q) ? q : ""} />
+                </div>
+                <div className="form-row">
+                  <label className="label" htmlFor="new_customer_phone">전화</label>
+                  <input id="new_customer_phone" name="phone" inputMode="tel" maxLength={30} className="field mono" placeholder="010-0000-0000" defaultValue={q && /^[\d-]+$/.test(q) ? q : ""} />
+                </div>
+                <div className="form-row">
+                  <label className="label" htmlFor="new_customer_address">주소</label>
+                  <input id="new_customer_address" name="address" maxLength={200} className="field" placeholder="단지·주소 (선택)" />
+                </div>
+              </div>
+              <div><SubmitButton className="btn btn-primary">등록하고 계약 작성</SubmitButton></div>
+            </ActionForm>
+          )}
         </div>
       </div>
     );
@@ -137,10 +160,21 @@ export default async function NewContractPage({ searchParams }: PageProps<"/cont
             </select>
           </div>
           <div className="form-row">
-            <label className="label" htmlFor="sales_owner_id">영업 담당</label>
-            <select id="sales_owner_id" name="sales_owner_id" className="field" defaultValue={session.user.id}>
-              {memberList.map((m) => <option key={m.profile_id} value={m.profile_id}>{m.profile?.display_name ?? m.profile_id}</option>)}
-            </select>
+            {session.current.scope === "own" ? (
+              // own 범위는 자기 계약만 가질 수 있다(다른 담당은 DB 가 거부) → 본인으로 고정
+              <>
+                <span className="label">영업 담당</span>
+                <div className="field bg-bg text-muted flex items-center">{session.profile?.display_name ?? session.user.email ?? "본인"}</div>
+                <input type="hidden" name="sales_owner_id" value={session.user.id} />
+              </>
+            ) : (
+              <>
+                <label className="label" htmlFor="sales_owner_id">영업 담당</label>
+                <select id="sales_owner_id" name="sales_owner_id" className="field" defaultValue={session.user.id}>
+                  {memberList.map((m) => <option key={m.profile_id} value={m.profile_id}>{m.profile?.display_name ?? m.profile_id}</option>)}
+                </select>
+              </>
+            )}
           </div>
           <div className="form-row md:col-span-3">
             <label className="label" htmlFor="memo">메모</label>

@@ -6,6 +6,9 @@ import { submitCustomerReview } from "@/lib/actions/public";
 import { won } from "@/lib/format";
 import { mmdd, weekday } from "@/lib/dates";
 import { JOB_STATUS, TIME_SLOT } from "@/lib/contracts";
+import { SignForm } from "@/components/sign-form";
+import { signByLink } from "@/lib/actions/signing";
+import { SIGN_METHOD, recordCode, type CustomerSigning } from "@/lib/signing";
 
 type Page = {
   tenant: { name: string; slug: string; brand: { app_name?: string | null; phone?: string | null } };
@@ -20,15 +23,27 @@ type Page = {
 const PAY_LABEL: Record<string, string> = { deposit: "계약금", interim: "중도금", balance: "잔금", refund: "환불" };
 const KIND_LABEL: Record<string, string> = { install: "시공", as: "AS", repair: "하자보수" };
 
+/** 2026-09-26T05:05:31Z → 2026.09.26 14:05 (한국 시간) */
+function whenKST(iso: string): string {
+  const s = new Date(iso).toLocaleString("sv-SE", { timeZone: "Asia/Seoul" });
+  return s.length >= 16 ? `${s.slice(0, 4)}.${s.slice(5, 7)}.${s.slice(8, 10)} ${s.slice(11, 16)}` : s;
+}
+
 export const metadata = { title: "내 시공 일정" };
 
 export default async function CustomerContractPage({ params }: PageProps<"/c/[slug]/[token]">) {
   const { slug, token } = await params;
   const admin = createAdminClient();
   if (!admin) notFound();
-  const { data } = await admin.rpc("customer_page", { p_slug: slug, p_token: token });
+  const [{ data }, { data: signingData }] = await Promise.all([
+    admin.rpc("customer_page", { p_slug: slug, p_token: token }),
+    admin.rpc("customer_signing", { p_slug: slug, p_token: token }),
+  ]);
   if (!data) notFound();
   const d = data as Page;
+  // 전자서명 상태·약관 (취소된 계약이면 can_sign=false, 링크가 틀리면 null)
+  const signing = (signingData ?? null) as CustomerSigning | null;
+  const sig = signing?.signature ?? null;
   const c = d.contract;
   const name = d.tenant.brand.app_name || d.tenant.name;
   const photoUrls = await signedUrlMap(admin, d.photos.map((p) => p.path));
@@ -85,6 +100,36 @@ export default async function CustomerContractPage({ params }: PageProps<"/c/[sl
           </ul>
         )}
       </section>
+
+      {sig ? (
+        <section className="card p-4 grid gap-3">
+          <div className="flex items-center gap-2">
+            <h2 className="text-sm font-semibold">전자서명 완료</h2>
+            <span className="badge badge-done">서명 완료</span>
+          </div>
+          <p className="text-sm">{sig.signer_name} 님 · {SIGN_METHOD[sig.method] ?? sig.method} · {whenKST(sig.signed_at)}</p>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={sig.signature_data} alt="서명" className="h-16 bg-white rounded border border-border" />
+          <p className="mono text-xs text-muted">확인번호 {recordCode(sig.record_hash)}</p>
+          {sig.changed && signing?.can_sign && (
+            <>
+              <p className="notice notice-danger">서명하신 뒤 계약 내용이 바뀌었습니다. 아래에서 다시 서명해 주세요.</p>
+              <details open>
+                <summary className="text-xs text-accent cursor-pointer">다시 서명하기</summary>
+                <div className="mt-3">
+                  <SignForm action={signByLink} hidden={{ slug, token }} terms={signing.terms} askPhoneTail={signing.phone_check} submitLabel="다시 서명하기" />
+                </div>
+              </details>
+            </>
+          )}
+        </section>
+      ) : signing?.can_sign ? (
+        <section className="card p-4 grid gap-3">
+          <h2 className="text-sm font-semibold">계약서 확인 및 서명</h2>
+          <p className="text-sm text-muted">계약 내용과 약관을 확인하신 뒤 서명해 주세요. 서명은 계약 내용·약관과 함께 보관되며, 위 계약 내용이 계약서 본문입니다.</p>
+          <SignForm action={signByLink} hidden={{ slug, token }} terms={signing.terms} askPhoneTail={signing.phone_check} submitLabel="서명하기" />
+        </section>
+      ) : null}
 
       {d.photos.length > 0 && (
         <section className="card p-4">

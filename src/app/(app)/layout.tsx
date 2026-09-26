@@ -20,7 +20,8 @@ export default async function AppLayout({ children }: LayoutProps<"/">) {
   const can = (p: string) => (p === "platform.manage" ? platform.isPlatformAdmin : session.can(p));
   const groups = NAV.map((g) => ({ ...g, items: visible(g.items, can) })).filter((g) => g.items.length > 0);
   const tabs = visible(MOBILE_TABS, can);
-  const tenants = session.memberships.map((m) => ({ id: m.tenant_id, name: m.tenant.name }));
+  // 한 사업체에 소속이 둘(지점 겸직 등)이어도 선택지는 한 번만 (중복 key 방지)
+  const tenants = Array.from(new Map(session.memberships.map((m) => [m.tenant_id, { id: m.tenant_id, name: m.tenant.name }])).values());
   const name = session.profile?.display_name || session.user.email || "";
   const roleName = session.current.role.name;
   const { data: notices } = await supabase.from("inapp_notification").select("id, kind, title, body, link, created_at, read_at").eq("profile_id", session.user.id).order("created_at", { ascending: false }).limit(20);

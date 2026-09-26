@@ -28,15 +28,16 @@ npm run lint && npx tsc --noEmit && npm run build
   - `20261005001300_campaign` 캠페인(UTM 정규화). 유입 링크는 `/sales/campaigns` 에서 만든다
   - `20261006001400_app_link` 집대리 앱 연동: 문의 채널 `app`, 상품의 앱 공종(`product.app_service_id`), 계약 금액 집계 `app_price_stats()`
   - `20261007001500_platform` 집대리 플랫폼 층: 운영사 지정(`claim_platform_operator()`), 협력업체 신청·승인(`approve_vendor()` → 사업체·대표 초대), 업체 소개·노출(`vendor_profile`, `vendor_card` 뷰), 고객 요청·견적·대화(`service_request`·`quote`·`request_message`, 업체용 뷰 `market_request` 는 이름 가림·연락처 비노출), 수수료·정산(`platform_fee`, `build_platform_settlement()`), 상단 노출 광고(`vendor_promotion`)
+  - `20261009001700_field_signing` 현장 계약: 시공기사 역할에 고객·계약 등록 권한(own), 계약을 쓰는 범위면 시공 건도 만들고 봄, 고객 전자서명(`contract_signature` 추가만 가능, 약관·계약 내용 스냅샷·해시), 직원 화면용 `contract_signing_info()`, 고객 링크용 `customer_signing()`·`customer_sign_contract()`(서비스 키)
 - `supabase/tests/local_stub.sql` — Supabase 없이 로컬 Postgres 에서 검증할 때만 쓰는 스텁(auth 스키마·역할). 실제 프로젝트에 적용 금지.
-- `supabase/tests/rls_*.sql` — 사업체 간 격리·권한 상승 차단·범위(own/branch) 테스트. 앞 테스트가 만든 자료를 뒤 테스트가 쓰므로 마이그레이션과 같은 순서로 실행한다: foundation → parties_products → contracts → ledger → assignment → media → inquiry → finance → inventory → groupware → customer_page → campaign → app_link → platform.
+- `supabase/tests/rls_*.sql` — 사업체 간 격리·권한 상승 차단·범위(own/branch) 테스트. 앞 테스트가 만든 자료를 뒤 테스트가 쓰므로 마이그레이션과 같은 순서로 실행한다: foundation → parties_products → contracts → ledger → assignment → media → inquiry → finance → inventory → groupware → customer_page → campaign → app_link → platform → field_signing.
 
 로컬 검증 예시(Postgres 16, 데이터베이스 새로 만들어서):
 
 ```bash
 T=supabase/tests
 for f in $T/local_stub.sql supabase/migrations/*.sql \
-  $T/rls_{foundation,parties_products,contracts,ledger,assignment,media,inquiry,finance,inventory,groupware,customer_page,campaign,app_link,platform}.sql; do
+  $T/rls_{foundation,parties_products,contracts,ledger,assignment,media,inquiry,finance,inventory,groupware,customer_page,campaign,app_link,platform,field_signing}.sql; do
   psql "$DB" -v ON_ERROR_STOP=1 -q -f "$f"
 done
 ```
@@ -49,6 +50,15 @@ done
 - 고객 페이지: `/c/<사업체 slug>` 브랜드 페이지(승인된 후기·마케팅 사용 사진·문의 폼), `/c/<slug>/<계약 토큰>` 고객용 계약 페이지(일정·기사·사진·잔액·후기). 서비스 키로만 DB 를 읽으므로 `SUPABASE_SECRET_KEY` 가 있어야 열린다.
 - 집대리 앱(kdolbae/jipdarie) 연동: 아래 "집대리 앱 연동" 참고.
 - PWA: `public/manifest.webmanifest` + `public/sw.js`. 배포마다 `sw.js` 의 VERSION 을 올린다. 시공 시작/완료는 오프라인이면 큐에 쌓였다가 연결되면 전송된다.
+
+## 현장 계약·전자서명
+
+- 계약 등록(`/contracts/new`)은 로그인만 되면 어느 기기에서든 된다: 사무실 PC, 현장 태블릿, 박람회 노트북(계정 가진 사람이 로그인), 기사 휴대폰. 1단계에서 새 고객을 바로 등록하고 계약으로 넘어갈 수 있다.
+- 시공기사 역할은 본인 범위(own)에서 고객·계약을 등록할 수 있다(영업 담당 = 본인). 담당 기사 배정은 여전히 `job.assign` 권한자가 한다.
+- 고객 서명: 계약 상세의 "고객 서명 받기" → `/sign/<계약 id>` 는 메뉴 없는 전체 화면이라 태블릿을 고객에게 그대로 건넨다(약관 → 동의 → 이름 → 서명). 서명 뒤 "다음 계약 등록" 으로 이어져 박람회 부스에서 연속으로 받는다.
+- 원격 서명: 고객용 계약 페이지 `/c/<slug>/<토큰>` 에서도 같은 폼으로 서명한다(휴대폰 뒷 4자리 확인). 서명되면 영업 담당에게 앱 내 알림이 간다.
+- 기록: 서명 이미지(PNG)·동의 항목·서명 당시 약관·계약 내용 스냅샷·해시(`material_hash`, `record_hash`)를 `contract_signature` 한 행에 남기고 고치지 않는다. 서명 뒤 계약자·현장·품목·금액이 바뀌면 화면에 "재서명 필요" 가 뜬다(일정 변경은 영향 없음).
+- 약관 문구는 `/settings/tenant` 의 "계약 약관" 에서 사업체별로 바꾼다. 비우면 기본 문구(제1조~제7조).
 
 ## 집대리 마켓(플랫폼 층)
 

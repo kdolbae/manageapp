@@ -120,6 +120,25 @@ export async function createContract(_prev: ActionState, formData: FormData): Pr
   redirect(`/contracts/${data}`);
 }
 
+// ---------------------------------------------------------------- 현장에서 새 고객 바로 등록 → 계약 등록 2단계로
+/** 박람회·현장 태블릿용: 이름·전화만으로 고객을 만들고 바로 그 고객의 계약 등록으로 간다. 담당자는 등록한 본인. */
+export async function createCustomerForContract(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  const parsed = z
+    .object({ name: z.string().trim().min(1).max(40), phone: optText(30), address: optText(200), branch_id: optUuid })
+    .safeParse(Object.fromEntries(formData));
+  if (!parsed.success) return fail("고객 이름을 확인해 주세요.");
+  const { session, supabase, tenantId } = await ctx("customer.write");
+  const d = parsed.data;
+  const { data, error } = await supabase
+    .from("customer")
+    .insert({ tenant_id: tenantId, created_by: session.user.id, owner_id: session.user.id, branch_id: d.branch_id ?? session.current.branch_id, name: d.name, phone: d.phone, address: d.address })
+    .select("id")
+    .single();
+  if (error) return fail(friendly(error.code, error.message));
+  revalidatePath("/people/customers");
+  redirect(`/contracts/new?customer=${data.id}`);
+}
+
 // ---------------------------------------------------------------- 계약 수정·승인·취소
 export async function updateContract(_prev: ActionState, formData: FormData): Promise<ActionState> {
   const parsed = z

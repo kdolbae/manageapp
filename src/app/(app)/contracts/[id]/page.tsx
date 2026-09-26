@@ -11,6 +11,7 @@ import { siteOrigin } from "@/lib/origin";
 import { updateContract, setApproval, cancelContract, addLine, updateLine, deleteLine, addJob, updateJob, removeJob, addLedgerEntry, voidLedgerEntry } from "@/lib/actions/contracts";
 import { MEDIA_KIND, signedUrlMap } from "@/lib/media";
 import { Thumb } from "@/app/(app)/content/media-ui";
+import { SIGN_METHOD, recordCode, signatureStale, type SigningInfo } from "@/lib/signing";
 
 export const metadata = { title: "계약" };
 
@@ -33,7 +34,7 @@ export default async function ContractPage({ params }: PageProps<"/contracts/[id
   const { data: summary } = await supabase.from("contract_summary").select("*").eq("id", id).maybeSingle();
   if (!summary) notFound();
 
-  const [{ data: contract }, { data: lines }, { data: jobs }, { data: entries }, workAreas, intakeTypes, payMethods, { data: branches }, { data: partners }, { data: members }, { data: technicians }] = await Promise.all([
+  const [{ data: contract }, { data: lines }, { data: jobs }, { data: entries }, workAreas, intakeTypes, payMethods, { data: branches }, { data: partners }, { data: members }, { data: technicians }, { data: signing }] = await Promise.all([
     supabase
       .from("contract")
       .select("*, customer:customer(id, name, phone, address), site:site(id, name, address, dong, ho), partner:partner(id, name), branch:branch(id, name), sales_owner:profile!contract_sales_owner_id_fkey(display_name), approver:profile!contract_approved_by_fkey(display_name)")
@@ -53,6 +54,7 @@ export default async function ContractPage({ params }: PageProps<"/contracts/[id
     session.can("job.assign")
       ? supabase.from("technician").select("id, name, skills").eq("tenant_id", tid).eq("status", "active").is("deleted_at", null).order("name")
       : Promise.resolve({ data: [] as { id: string; name: string; skills: string[] }[] }),
+    supabase.rpc("contract_signing_info", { p_contract: id }),
   ]);
   if (!contract) notFound();
 
@@ -82,6 +84,11 @@ export default async function ContractPage({ params }: PageProps<"/contracts/[id
   const canJob = session.can("job.write") && !contract.canceled_at;
   const canLedger = session.can("ledger.write") && !contract.canceled_at;
   const canRate = session.can("payout.read") || session.can("product.manage");
+  // 고객 서명: 최근 서명의 해시와 지금 계약 내용의 해시가 다르면 "재서명 필요"
+  const signingInfo = (signing ?? null) as SigningInfo | null;
+  const signature = signingInfo?.signature ?? null;
+  const signStale = signingInfo ? signatureStale(signingInfo) : false;
+  const canSign = !contract.canceled_at && (session.can("contract.write") || session.can("job.complete"));
   const waMark = (code: string | null) => {
     const i = workAreas.findIndex((w) => w.code === code);
     if (i < 0) return null;
@@ -98,9 +105,15 @@ export default async function ContractPage({ params }: PageProps<"/contracts/[id
           <span>{contract.customer?.name}</span>
           <span className={`badge badge-${st.badge}`}>{st.label}</span>
           {contract.approval_status !== "approved" && <span className={`badge badge-${ap.badge}`}>{ap.label}</span>}
+          {signature && (signStale ? <span className="badge badge-risk">재서명 필요</span> : <span className="badge badge-done">서명 완료</span>)}
         </h1>
         <div className="flex items-center gap-2 flex-wrap">
           {contract.public_token && <CopyButton text={`${await siteOrigin()}/c/${session.current.tenant.slug}/${contract.public_token}`} label="고객 페이지 링크 복사" />}
+          {canSign && (!signature
+            ? <Link href={`/sign/${id}`} className="btn btn-primary">고객 서명 받기</Link>
+            : signStale
+              ? <Link href={`/sign/${id}?again=1`} className="btn btn-danger">다시 서명 받기</Link>
+              : <Link href={`/sign/${id}?again=1`} className="btn btn-sm">다시 서명</Link>)}
           {session.can("contract.approve") && !contract.canceled_at && contract.approval_status === "pending" && (
             <>
               <ActionForm action={setApproval}><input type="hidden" name="id" value={id} /><input type="hidden" name="approval_status" value="approved" /><SubmitButton className="btn btn-primary">승인</SubmitButton></ActionForm>
@@ -342,6 +355,20 @@ export default async function ContractPage({ params }: PageProps<"/contracts/[id
               <span className="text-muted">발주처</span><span>{contract.partner?.name ?? "직접 계약"}</span>
               <span className="text-muted">영업 담당</span><span>{contract.sales_owner?.display_name ?? "—"}</span>
               <span className="text-muted">승인</span><span>{ap.label}{contract.approver && ` · ${contract.approver.display_name}`}{contract.approved_at && <span className="text-muted"> {fmtDateTime(contract.approved_at)}</span>}</span>
+              <span className="text-muted">고객 서명</span>
+              <div>
+                {signature ? (
+                  <>
+                    <div>{signature.signer_name} · {SIGN_METHOD[signature.method] ?? signature.method} · <span className="text-muted">{fmtDateTime(signature.signed_at)}</span>{signature.witnessed_by && ` · ${signature.witnessed_by} 입회`}</div>
+                    <div className="mt-1 flex items-center gap-2 flex-wrap">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={signature.signature_data} alt="서명" className="h-12 bg-white rounded border border-border" />
+                      <span className="mono text-xs text-muted">확인번호 {recordCode(signature.record_hash)}</span>
+                    </div>
+                    {signStale && <div className="text-danger text-xs mt-1">서명 뒤 계약 내용이 바뀌었습니다</div>}
+                  </>
+                ) : <span className="zero">아직 없음</span>}
+              </div>
               <span className="text-muted">메모</span><span className="whitespace-pre-wrap">{contract.memo ?? "—"}</span>
             </div>
             {canWrite && (
@@ -378,7 +405,7 @@ export default async function ContractPage({ params }: PageProps<"/contracts/[id
               {history.map((h) => {
                 const isJob = h.entity === "job";
                 const job = isJob ? jobList.find((j) => j.id === h.entity_id) : null;
-                const label = h.entity === "contract_approval" ? `승인 ${APPROVAL[h.to_status]?.label ?? h.to_status}` : h.entity === "contract" ? `계약 ${h.to_status === "canceled" ? "취소" : h.to_status}` : `${labelOf(workAreas, job?.work_area_code) || "시공"} ${JOB_STATUS[h.to_status]?.label ?? h.to_status}`;
+                const label = h.entity === "contract_approval" ? `승인 ${APPROVAL[h.to_status]?.label ?? h.to_status}` : h.entity === "contract" ? (h.to_status === "signed" ? "고객 서명" : `계약 ${h.to_status === "canceled" ? "취소" : h.to_status}`) : `${labelOf(workAreas, job?.work_area_code) || "시공"} ${JOB_STATUS[h.to_status]?.label ?? h.to_status}`;
                 return <li key={h.id} className="flex gap-2"><span className="mono text-muted w-[84px] flex-none">{fmtDateTime(h.at)}</span><span>{label}{h.note && <span className="text-muted"> · {h.note}</span>}</span></li>;
               })}
               {history.length === 0 && <li className="text-muted">이력이 없습니다.</li>}

@@ -12,10 +12,11 @@ export default async function TenantSettingsPage() {
   const supabase = await createClient();
   const { data: tenant } = await supabase
     .from("tenant")
-    .select("id, name, slug, business_no, brand, created_at")
+    .select("id, name, slug, business_no, brand, settings, created_at")
     .eq("id", session.current.tenant_id)
     .single();
   const brand = (tenant?.brand ?? {}) as Record<string, string | null>;
+  const settings = (tenant?.settings ?? {}) as Record<string, string | null>;
   const editable = session.can("tenant.manage");
   const brandUrl = `${await siteOrigin()}/c/${tenant?.slug ?? ""}`;
 
@@ -69,6 +70,12 @@ export default async function TenantSettingsPage() {
               <label className="label" htmlFor="instagram_url">인스타그램 링크</label>
               <input id="instagram_url" name="instagram_url" type="url" defaultValue={brand.instagram_url ?? ""} placeholder="https://instagram.com/..." className="field mono text-xs" />
             </div>
+          </div>
+          <h2 className="text-sm font-semibold mt-5 mb-2">계약 약관 (전자서명 화면에 표시)</h2>
+          <p className="text-xs text-muted mb-2">고객이 태블릿이나 계약 링크에서 서명할 때 보는 약관입니다. 비워 두면 기본 문구를 씁니다. 법무 검토 후 사업체에 맞게 고쳐 쓰세요.</p>
+          <div className="form-row">
+            <label className="label" htmlFor="contract_terms">약관 본문</label>
+            <textarea id="contract_terms" name="contract_terms" rows={10} maxLength={6000} className="field text-[13px]" defaultValue={settings.contract_terms ?? ""} placeholder="비워 두면 기본 약관(제1조~제7조) 문구가 쓰입니다" />
           </div>
           {editable && <SubmitButton>저장</SubmitButton>}
         </fieldset>
