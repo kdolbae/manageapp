@@ -1,0 +1,45 @@
+import Link from "next/link";
+import { requireTenant } from "@/lib/auth/session";
+import { NAV, visible } from "@/lib/nav";
+import { Icon } from "@/components/icons";
+import { InstallButton, Installable } from "@/components/pwa";
+import { createClient } from "@/lib/supabase/server";
+import { platformContext } from "@/lib/market";
+
+export const metadata = { title: "메뉴" };
+
+export default async function MenuPage() {
+  const session = await requireTenant();
+  const platform = await platformContext(await createClient(), session.current.tenant_id, session.can);
+  const can = (p: string) => (p === "platform.manage" ? platform.isPlatformAdmin : session.can(p));
+  const groups = NAV.map((g) => ({ ...g, items: visible(g.items, can) })).filter((g) => g.items.length > 0);
+  return (
+    <div>
+      <div className="panel-head"><h1>전체 메뉴</h1></div>
+      <div className="p-4 grid gap-3 max-w-[640px]">
+        {groups.map((g, i) => (
+          <div key={i} className="card">
+            {g.title && <div className="px-4 pt-3 pb-1 text-[11.5px] text-muted">{g.title}</div>}
+            {g.items.map((item) => (
+              <Link key={item.href} href={item.href} className="flex items-center gap-3 px-4 py-3 border-t border-border text-[15px] text-text no-underline first:border-t-0">
+                <Icon name={item.icon} size={18} className="text-muted" />
+                <span className="flex-1">{item.label}</span>
+                {item.day && <span className="text-[11px] text-muted mono">D{item.day}</span>}
+              </Link>
+            ))}
+          </div>
+        ))}
+        <Installable>
+          <div className="card p-4">
+            <div className="text-sm font-semibold">앱으로 설치</div>
+            <p className="text-xs text-muted mt-1 mb-3">휴대폰·태블릿 홈 화면에 추가하면 앱처럼 바로 열리고, 연결이 끊겨도 기본 화면이 뜹니다.</p>
+            <InstallButton />
+          </div>
+        </Installable>
+        <div className="text-xs text-muted px-1">
+          {session.profile?.display_name || session.user.email} · {session.current.role.name}
+        </div>
+      </div>
+    </div>
+  );
+}
