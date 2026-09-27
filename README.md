@@ -29,15 +29,16 @@ npm run lint && npx tsc --noEmit && npm run build
   - `20261006001400_app_link` 집대리 앱 연동: 문의 채널 `app`, 상품의 앱 공종(`product.app_service_id`), 계약 금액 집계 `app_price_stats()`
   - `20261007001500_platform` 집대리 플랫폼 층: 운영사 지정(`claim_platform_operator()`), 협력업체 신청·승인(`approve_vendor()` → 사업체·대표 초대), 업체 소개·노출(`vendor_profile`, `vendor_card` 뷰), 고객 요청·견적·대화(`service_request`·`quote`·`request_message`, 업체용 뷰 `market_request` 는 이름 가림·연락처 비노출), 수수료·정산(`platform_fee`, `build_platform_settlement()`), 상단 노출 광고(`vendor_promotion`)
   - `20261009001700_field_signing` 현장 계약: 시공기사 역할에 고객·계약 등록 권한(own), 계약을 쓰는 범위면 시공 건도 만들고 봄, 고객 전자서명(`contract_signature` 추가만 가능, 약관·계약 내용 스냅샷·해시), 직원 화면용 `contract_signing_info()`, 고객 링크용 `customer_signing()`·`customer_sign_contract()`(서비스 키)
+  - `20261010001800_cash_receipt` 현금영수증: 발행 기록 `cash_receipt`(금액 불변, 상태만 pending→issued/failed, issued→canceled), 요청 기록 `cash_receipt_request`(같은 채팅 메시지는 한 번만), Teams 채팅방 연결 `teams_conversation`, 발행 대상 금액 `cash_receipt_unissued()`, 계약을 잠그고 예약하는 `reserve_cash_receipt()`·연결 코드 `link_teams_conversation()`(둘 다 서비스 키)
 - `supabase/tests/local_stub.sql` — Supabase 없이 로컬 Postgres 에서 검증할 때만 쓰는 스텁(auth 스키마·역할). 실제 프로젝트에 적용 금지.
-- `supabase/tests/rls_*.sql` — 사업체 간 격리·권한 상승 차단·범위(own/branch) 테스트. 앞 테스트가 만든 자료를 뒤 테스트가 쓰므로 마이그레이션과 같은 순서로 실행한다: foundation → parties_products → contracts → ledger → assignment → media → inquiry → finance → inventory → groupware → customer_page → campaign → app_link → platform → field_signing.
+- `supabase/tests/rls_*.sql` — 사업체 간 격리·권한 상승 차단·범위(own/branch) 테스트. 앞 테스트가 만든 자료를 뒤 테스트가 쓰므로 마이그레이션과 같은 순서로 실행한다: foundation → parties_products → contracts → ledger → assignment → media → inquiry → finance → inventory → groupware → customer_page → campaign → app_link → platform → field_signing → cash_receipt.
 
 로컬 검증 예시(Postgres 16, 데이터베이스 새로 만들어서):
 
 ```bash
 T=supabase/tests
 for f in $T/local_stub.sql supabase/migrations/*.sql \
-  $T/rls_{foundation,parties_products,contracts,ledger,assignment,media,inquiry,finance,inventory,groupware,customer_page,campaign,app_link,platform,field_signing}.sql; do
+  $T/rls_{foundation,parties_products,contracts,ledger,assignment,media,inquiry,finance,inventory,groupware,customer_page,campaign,app_link,platform,field_signing,cash_receipt}.sql; do
   psql "$DB" -v ON_ERROR_STOP=1 -q -f "$f"
 done
 ```
@@ -50,6 +51,31 @@ done
 - 고객 페이지: `/c/<사업체 slug>` 브랜드 페이지(승인된 후기·마케팅 사용 사진·문의 폼), `/c/<slug>/<계약 토큰>` 고객용 계약 페이지(일정·기사·사진·잔액·후기). 서비스 키로만 DB 를 읽으므로 `SUPABASE_SECRET_KEY` 가 있어야 열린다.
 - 집대리 앱(kdolbae/jipdarie) 연동: 아래 "집대리 앱 연동" 참고.
 - PWA: `public/manifest.webmanifest` + `public/sw.js`. 배포마다 `sw.js` 의 VERSION 을 올린다. 시공 시작/완료는 오프라인이면 큐에 쌓였다가 연결되면 전송된다.
+
+## 현금영수증 자동 발행 (Teams)
+
+Teams 채팅방에 이런 메시지가 올라오면 발행하고, 같은 채팅방에 영수증 이미지를 답장으로 올린다.
+
+```
+현장주소
+서울특별시 ○○구 ○○아파트 101동 1001호
+계약자명
+홍길동
+계약자연락처
+010-0000-0000
+
+현금영수증 신청합니다
+```
+
+- 흐름: Teams 봇(`/api/teams/bot`) → 연결된 채팅방인지 확인 → 메시지 읽기(`src/lib/cash-receipt/parse.ts`) → 연락처(+이름)로 고객, 여러 계약이면 현장주소의 동·호수·단지명으로 계약 하나 고르기 → `reserve_cash_receipt()` 가 계약을 잠그고 발행할 금액을 계산해 pending 한 건 → 발행 대행사 호출 → issued/failed → 답장(문장 + 이미지 카드).
+- 발행 금액: 원장에서 취소 안 된 현금·계좌이체 수납(환불은 빼고) − 이미 발행했거나 발행 중인 현금영수증. 원장 수납에 "영수증·승인번호"를 적은 건은 이미 따로 발행한 것으로 보고 뺀다. 메시지에 `금액` 줄이 있으면 그만큼만, `계약번호` 줄이 있으면 그 계약으로, `사업자번호` 줄이 있으면 지출증빙용.
+- 이중 발행 차단: 같은 채팅 메시지는 `cash_receipt_request` 유일 키로 한 번만 처리, 같은 계약은 잠금 + pending 이 있으면 새 예약 불가, 대행사 문서번호(`mgt_key`)는 영수증마다 고정이라 재시도해도 같은 번호. 이미 다 발행된 계약에 다시 요청하면 마지막 영수증 이미지를 다시 보낸다.
+- 못 하는 경우(고객·계약을 못 찾음, 계약이 여러 건, 입금 기록 없음, 이름 불일치)는 발행하지 않고 무엇이 부족한지 답장한다.
+- 영수증 이미지: `/api/public/v1/cash-receipt/<36자 토큰>` (PNG, 이름·번호 가림, 한글 글꼴은 Google Fonts 에서 필요한 글자만 받아 씀). 시험 발행이면 "시험 발행 · 국세청 전송 없음" 이 찍힌다.
+- 발행 대행: `src/lib/cash-receipt/provider.ts` 어댑터 뒤에 `mock`(시험 발행)과 `popbill`(`popbill.ts`, 링크허브 REST 직접 호출 — 서명은 공식 Node SDK 와 같은 값이 나오는 것을 확인함)이 있다. 사업체별 선택·가맹점 사업자번호·품목명·과세는 `/settings/integrations` 에서.
+- 연결: `/settings/integrations` 에서 Teams 앱 패키지(.zip)를 받아 채팅방에 올리고, "채팅방 연결 코드"(8자, 30분, 한 번)를 받아 그 채팅방에 `집대리 연결 코드` 로 보낸다. 연결되지 않은 채팅방에서는 발행하지 않는다. 같은 화면의 "요청 시험하기"로 Teams 없이 같은 흐름을 돌려 볼 수 있다.
+- 봇은 앱 매니페스트의 RSC 권한(`ChatMessage.Read.Chat`, `ChannelMessage.Read.Group`)으로 @멘션 없이 메시지를 받는다. 그룹 채팅에서 멘션 없는 메시지 수신은 Microsoft 쪽에서 아직 미리 보기 단계라 회사 테넌트에서 안 올 수 있다. 그때는 메시지에 `@집대리` 를 붙이거나 팀 채널을 쓰면 된다(채널은 정식 지원).
+- 환경변수: `TEAMS_BOT_APP_ID`, `TEAMS_BOT_APP_PASSWORD`, `TEAMS_BOT_TENANT_ID`, `POPBILL_LINK_ID`, `POPBILL_SECRET_KEY`, `POPBILL_IS_TEST`(기본 1 = 팝빌 테스트 서버), `POPBILL_IP_RESTRICT`(기본 0: Vercel 은 IP 가 고정되지 않음).
 
 ## 현장 계약·전자서명
 

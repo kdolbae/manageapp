@@ -2,8 +2,8 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { supabaseEnv } from "@/lib/supabase/env";
 
-// 로그인 없이 열 수 있는 경로
-const PUBLIC_PREFIXES = ["/login", "/signup", "/offline", "/auth/", "/invite/", "/c/", "/api/public/", "/api/app/", "/apply", "/vendors", "/vendors/", "/request", "/r/"];
+// 로그인 없이 열 수 있는 경로 (api/internal·teams/bot 은 각자 CRON_SECRET·Bot Framework 토큰으로 확인한다)
+const PUBLIC_PREFIXES = ["/login", "/signup", "/offline", "/auth/", "/invite/", "/c/", "/api/public/", "/api/app/", "/api/internal/", "/api/teams/bot", "/apply", "/vendors", "/vendors/", "/request", "/r/"];
 
 function isPublic(pathname: string) {
   return PUBLIC_PREFIXES.some((p) => (p.endsWith("/") ? pathname.startsWith(p) : pathname === p));

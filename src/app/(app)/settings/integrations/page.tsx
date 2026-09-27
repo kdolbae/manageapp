@@ -5,6 +5,7 @@ import { ActionForm, SubmitButton } from "@/components/action-form";
 import { CopyButton } from "@/components/copy-button";
 import { saveTeamsWebhook, testTeamsWebhook, rotateWebInquiryKey } from "@/lib/actions/inbox";
 import { fmtDateTime } from "@/lib/inbox";
+import { CashReceiptPanel } from "./cash-receipt-panel";
 
 export const metadata = { title: "연동 설정" };
 
@@ -65,6 +66,8 @@ export default async function IntegrationsPage() {
             <SubmitButton className="btn btn-sm" pendingText="보내는 중…">테스트 보내기</SubmitButton>
           </ActionForm>
         )}
+
+        <CashReceiptPanel tenantId={tid} origin={origin} />
 
         <div className="card">
           <div className="panel-head"><h2>최근 발송 <span className="sub">20건</span></h2></div>

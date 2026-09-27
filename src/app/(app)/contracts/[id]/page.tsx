@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { maskIdentity } from "@/lib/cash-receipt/parse";
 import { notFound } from "next/navigation";
 import { requireTenant } from "@/lib/auth/session";
 import { createClient } from "@/lib/supabase/server";
@@ -24,6 +25,8 @@ function fmtDateTime(v: string) {
   const d = new Date(v);
   return `${String(d.getMonth() + 1).padStart(2, "0")}.${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
 }
+
+const CASH_RECEIPT_STATUS: Record<string, string> = { pending: "발행 중", issued: "발행", failed: "실패", canceled: "취소" };
 
 export default async function ContractPage({ params }: PageProps<"/contracts/[id]">) {
   const { id } = await params;
@@ -77,6 +80,10 @@ export default async function ContractPage({ params }: PageProps<"/contracts/[id
   ]);
   const photoList = (photos ?? []) as { id: string; job_id: string | null; kind: string; path: string; caption: string | null; marketing_ok: boolean }[];
   const photoUrls = await signedUrlMap(supabase, photoList.map((p) => p.path));
+  const { data: receipts } = session.can("ledger.read")
+    ? await supabase.from("cash_receipt").select("id, status, total_amount, identity_num, trade_usage, confirm_num, error_message, image_token, provider, created_at").eq("contract_id", id).order("created_at", { ascending: false })
+    : { data: [] };
+  const receiptList = (receipts ?? []) as { id: string; status: string; total_amount: number; identity_num: string; trade_usage: string; confirm_num: string | null; error_message: string | null; image_token: string; provider: string; created_at: string }[];
 
   const st = CONTRACT_STATUS[summary.status] ?? { label: summary.status, badge: "wait" };
   const ap = APPROVAL[contract.approval_status];
@@ -323,6 +330,25 @@ export default async function ContractPage({ params }: PageProps<"/contracts/[id
                   {entryList.length === 0 && <tr><td colSpan={7} className="text-muted">기록이 없습니다.</td></tr>}
                 </tbody>
               </table>
+              {receiptList.length > 0 && (
+                <div className="border-t border-border">
+                  <div className="panel-head"><h2>현금영수증 <span className="sub">{receiptList.length}건</span></h2></div>
+                  <table className="tbl">
+                    <thead><tr><th>일시</th><th>상태</th><th className="text-right">금액</th><th>식별번호</th><th>승인번호</th></tr></thead>
+                    <tbody>
+                      {receiptList.map((r) => (
+                        <tr key={r.id}>
+                          <td className="mono text-muted">{fmtDateTime(r.created_at)}</td>
+                          <td><span className={`badge ${r.status === "issued" ? "badge-done" : r.status === "failed" || r.status === "canceled" ? "badge-risk" : "badge-wait"}`}>{CASH_RECEIPT_STATUS[r.status] ?? r.status}{r.provider === "mock" ? " · 시험" : ""}</span></td>
+                          <td className="num">{won(r.total_amount)}</td>
+                          <td className="mono text-xs">{maskIdentity(r.identity_num)} <span className="text-muted">{r.trade_usage === "expense" ? "지출증빙" : "소득공제"}</span></td>
+                          <td className="mono text-xs">{r.status === "issued" || r.status === "canceled" ? <a href={`/api/public/v1/cash-receipt/${r.image_token}`} target="_blank" rel="noreferrer" className="text-accent">{r.confirm_num}</a> : <span className="text-danger">{r.error_message}</span>}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
               {canLedger && (
                 <details className="border-t border-border p-3" open={entryList.length === 0}>
                   <summary className="cursor-pointer text-accent text-sm">수납·조정 기록</summary>
