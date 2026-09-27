@@ -45,7 +45,7 @@ done
 ## 알림·연동
 
 - 홈페이지 문의: `POST /api/public/inquiry` (헤더 `x-api-key`). 키는 `/settings/integrations` 에서 발급하며 해시만 저장한다.
-- Teams: 워크플로 웹훅 주소를 `/settings/integrations` 에 저장하면 새 문의마다 카드가 간다. 발송은 문의 인입 직후와 시간마다(`/api/internal/deliver`, Vercel cron, `CRON_SECRET`).
+- Teams: 워크플로 웹훅 주소를 `/settings/integrations` 에 저장하면 새 문의마다 카드가 간다. 발송은 문의 인입 직후에 시도하고, 남은 대기열은 `/api/internal/deliver`(Vercel cron, `CRON_SECRET`)가 처리한다. Vercel Hobby 플랜은 cron 을 하루 1회까지만 허용하므로 `vercel.json` 의 일정은 매일 00:00 UTC(09:00 KST)다. Pro 로 올리면 `0 * * * *`(매시)로 되돌린다.
 - 앱 내 알림: 헤더의 종. Supabase Realtime 으로 새 알림이 바로 뜬다.
 - 고객 페이지: `/c/<사업체 slug>` 브랜드 페이지(승인된 후기·마케팅 사용 사진·문의 폼), `/c/<slug>/<계약 토큰>` 고객용 계약 페이지(일정·기사·사진·잔액·후기). 서비스 키로만 DB 를 읽으므로 `SUPABASE_SECRET_KEY` 가 있어야 열린다.
 - 집대리 앱(kdolbae/jipdarie) 연동: 아래 "집대리 앱 연동" 참고.
